@@ -1,0 +1,40 @@
+name: Feature
+description: Nueva funcionalidad
+title: "S?-?? — "
+labels: ["feature"]
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo
+      description: Qué hay que conseguir
+    validations:
+      required: true
+  - type: textarea
+    id: scope_in
+    attributes:
+      label: Alcance (IN)
+      description: Qué entra exactamente
+    validations:
+      required: true
+  - type: textarea
+    id: scope_out
+    attributes:
+      label: Fuera de alcance (OUT)
+      description: Qué NO entra
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceptación
+      description: Condiciones verificables de “done”
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Pruebas mínimas
+      description: Qué se debe ejecutar/probar
+    validations:
+      required: true
