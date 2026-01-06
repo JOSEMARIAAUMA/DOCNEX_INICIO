@@ -1,0 +1,12 @@
+{
+    "extends": "eslint:recommended",
+    "parser": "@typescript-eslint/parser",
+    "plugins": [
+        "@typescript-eslint"
+    ],
+    "root": true,
+    "ignorePatterns": [
+        "dist",
+        "node_modules"
+    ]
+}
