@@ -1,0 +1,1 @@
+npx supabase startnpx supabase statusnpx supabase stopnpx supabase db reset
