@@ -5,10 +5,12 @@ import { Document, DocumentBlock, SemanticLink } from '@docnex/shared';
 import { listDocuments, listActiveBlocks, listSemanticLinksByBlock, getBacklinksByBlock, getBlock } from '@/lib/api';
 import { Button } from '@/components/ui/UiButton';
 import { Card, CardContent } from '@/components/ui/UiCard';
-import { ChevronDown, ChevronRight, FileText, Link as LinkIcon, ExternalLink, History, Network, ArrowRightLeft, Quote, Boxes } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, Link as LinkIcon, ExternalLink, History, Network, ArrowRightLeft, Quote, Boxes, Share2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import KnowledgeGraph from '@/components/visual/KnowledgeGraph';
+import { transformToLocalGraph } from '@/lib/visual/graph-adapter';
 
-type SupportCategory = 'network' | 'version' | 'linked_ref' | 'unlinked_ref';
+type SupportCategory = 'network' | 'visual' | 'version' | 'linked_ref' | 'unlinked_ref';
 
 interface SupportDocumentsSectionProps {
     projectId: string;
@@ -34,10 +36,16 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
     const [unlinkedRefs, setUnlinkedRefs] = useState<NetworkConnection[]>([]);
     const [backlinks, setBacklinks] = useState<NetworkConnection[]>([]);
 
+    // Graph state
+    const [activeBlockTitle, setActiveBlockTitle] = useState('Bloque Activo');
+
     const loadNetwork = useCallback(async () => {
         if (!activeBlockId) return;
         setLoading(true);
         try {
+            // Fetch current block title if needed
+            getBlock(activeBlockId).then(b => setActiveBlockTitle(b.title)).catch(() => setActiveBlockTitle('Bloque Activo'));
+
             // 1. Fetch Outgoing Links (Linked & Unlinked)
             const outgoing = await listSemanticLinksByBlock(activeBlockId);
 
@@ -80,7 +88,7 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
     const loadDocs = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await listDocuments(projectId, category === 'network' ? 'main' : category);
+            const data = await listDocuments(projectId, category === 'network' || category === 'visual' ? 'main' : category);
             setDocs(data);
         } catch (err) {
             console.error('Error loading support docs:', err);
@@ -90,7 +98,7 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
     }, [projectId, category]);
 
     useEffect(() => {
-        if (category === 'network') {
+        if (category === 'network' || category === 'visual') {
             loadNetwork();
         } else {
             loadDocs();
@@ -116,10 +124,11 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
     };
 
     const categories = [
-        { id: 'network', label: 'Red Semántica', icon: <Network className="w-4 h-4" /> },
-        { id: 'version', label: 'Versiones', icon: <History className="w-4 h-4" /> },
-        { id: 'linked_ref', label: 'Ref. Vinculadas', icon: <LinkIcon className="w-4 h-4" /> },
-        { id: 'unlinked_ref', label: 'Ref. Externas', icon: <ExternalLink className="w-4 h-4" /> },
+        { id: 'network', label: 'Lista', icon: <Network className="w-4 h-4" /> },
+        { id: 'visual', label: 'Grafo', icon: <Share2 className="w-4 h-4" /> },
+        { id: 'version', label: 'Hist.', icon: <History className="w-4 h-4" /> },
+        { id: 'linked_ref', label: 'Docs', icon: <LinkIcon className="w-4 h-4" /> },
+        { id: 'unlinked_ref', label: 'Ext.', icon: <ExternalLink className="w-4 h-4" /> },
     ];
 
     const renderNetworkItem = (connection: NetworkConnection, type: 'outgoing' | 'incoming') => {
@@ -173,16 +182,20 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
         );
     };
 
+    const graphData = activeBlockId
+        ? transformToLocalGraph(activeBlockId, activeBlockTitle, { linked: linkedRefs, unlinked: unlinkedRefs, backlinks: backlinks })
+        : { nodes: [], links: [] };
+
     return (
         <div className="flex flex-col h-full space-y-4">
             {/* Category Selector */}
-            <div className="flex bg-muted p-1 rounded-lg gap-1">
+            <div className="flex bg-muted p-1 rounded-lg gap-1 overflow-x-auto custom-scrollbar">
                 {categories.map((cat) => (
                     <button
                         key={cat.id}
                         onClick={() => setCategory(cat.id as SupportCategory)}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all leading-none",
+                            "flex-1 min-w-[60px] flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all leading-none whitespace-nowrap",
                             category === cat.id
                                 ? "bg-card text-foreground shadow-sm"
                                 : "text-muted-foreground hover:text-foreground hover:bg-black/5"
@@ -190,15 +203,35 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
                         title={cat.label}
                     >
                         {cat.icon}
-                        <span className="hidden xl:inline ml-1">{cat.label.split(' ')[0]}</span>
+                        <span className="hidden xl:inline ml-1">{cat.label}</span>
                     </button>
                 ))}
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar relative">
                 {loading ? (
                     <div className="py-8 text-center text-muted-foreground text-sm">Cargando...</div>
+                ) : category === 'visual' ? (
+                    !activeBlockId ? (
+                        <div className="py-8 text-center text-muted-foreground text-xs italic">
+                            Selecciona un bloque para visualizar su grafo
+                        </div>
+                    ) : (
+                        <div className="h-[400px] border border-border rounded-xl shadow-inner bg-card overflow-hidden">
+                            <KnowledgeGraph
+                                data={graphData}
+                                onNodeClick={(node) => {
+                                    if (node.type === 'block' && node.data) {
+                                        onCompare(node.data);
+                                    }
+                                }}
+                            />
+                            <div className="p-2 text-[10px] text-muted-foreground text-center bg-muted/50 border-t border-border">
+                                Nodos: {graphData.nodes.length} | Conexiones: {graphData.links.length}
+                            </div>
+                        </div>
+                    )
                 ) : category === 'network' ? (
                     !activeBlockId ? (
                         <div className="py-8 text-center text-muted-foreground text-xs italic">
