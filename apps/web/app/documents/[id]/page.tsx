@@ -423,6 +423,7 @@ export default function DocumentEditorPage() {
                     {selectedBlock ? (
                         <BlockContentEditor
                             block={selectedBlock}
+                            allBlocks={blocks}
                             resources={resources}
                             onUpdate={loadData}
                             onSplit={handleSplit}

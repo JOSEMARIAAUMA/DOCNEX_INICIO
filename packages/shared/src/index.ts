@@ -35,6 +35,7 @@ export interface DocumentBlock {
     is_deleted: boolean;
     parent_block_id: string | null;
     block_type: 'section' | 'note' | 'quote' | 'table';
+    tags?: string[];
     created_at: string;
     updated_at: string;
 }
@@ -140,4 +141,20 @@ export interface BlockCommentReply {
     content: string;
     created_at: string;
     updated_at: string;
+}
+
+export interface SemanticLink {
+    id: string;
+    source_block_id: string;
+    target_block_id: string;
+    target_document_id?: string;
+    link_type: 'manual_ref' | 'auto_mention' | 'semantic_similarity' | 'backlink' | 'tag_similarity';
+    metadata: {
+        context?: string;
+        auto_generated?: boolean;
+        confidence?: number;
+        common_tags?: string[];
+        [key: string]: any;
+    };
+    created_at?: string;
 }
