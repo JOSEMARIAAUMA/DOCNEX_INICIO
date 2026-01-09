@@ -15,6 +15,7 @@ interface NoteDetailsPanelProps {
 
 export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, onUpdate }: NoteDetailsPanelProps) {
     const [content, setContent] = useState('');
+    const [noteType, setNoteType] = useState<'review' | 'ai_instruction'>('review');
     const [links, setLinks] = useState<string>('');
     const [replies, setReplies] = useState<BlockCommentReply[]>([]);
     const [newReply, setNewReply] = useState('');
@@ -24,6 +25,7 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
     useEffect(() => {
         if (note && isOpen) {
             setContent(note.content);
+            setNoteType(note.comment_type);
             const metaLinks = (note.meta?.links as string[]) || [];
             setLinks(metaLinks.join('\n'));
             loadReplies();
@@ -47,6 +49,7 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
             const linkList = links.split('\n').filter(l => l.trim().startsWith('http'));
             await updateBlockComment(note.id, {
                 content,
+                comment_type: noteType,
                 meta: { ...(note.meta || {}), links: linkList }
             });
             onUpdate();
@@ -76,14 +79,14 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
             {/* Header */}
             <div className="p-6 border-b border-border flex items-center justify-between bg-muted/40 shrink-0">
                 <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg ${note?.comment_type === 'ai_instruction' ? 'bg-primary text-primary-foreground' : 'bg-blue-500 text-white'
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-xl shadow-lg ${noteType === 'ai_instruction' ? 'bg-primary text-primary-foreground' : 'bg-blue-500 text-white'
                         }`}>
                         {noteNumber}
                     </div>
                     <div>
                         <h2 className="text-xl font-bold text-foreground">Detalles de la Nota</h2>
                         <span className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground/60 leading-none">
-                            {note?.comment_type === 'ai_instruction' ? '🤖 IA Instruction' : '📝 Revision Note'}
+                            {noteType === 'ai_instruction' ? '🤖 IA Instruction' : '📝 Revision Note'}
                         </span>
                     </div>
                 </div>
@@ -121,6 +124,27 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
                 {activeTab === 'content' && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                        {/* Note Type Selector */}
+                        <div className="space-y-3">
+                            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+                                Tipo de Nota
+                            </label>
+                            <div className="flex gap-2 bg-muted/50 p-2 rounded-xl border border-border/50">
+                                <button
+                                    onClick={() => setNoteType('review')}
+                                    className={`flex-1 px-4 py-2.5 text-xs font-bold rounded-lg transition-all ${noteType === 'review' ? 'bg-blue-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                                >
+                                    📝 REVISIÓN
+                                </button>
+                                <button
+                                    onClick={() => setNoteType('ai_instruction')}
+                                    className={`flex-1 px-4 py-2.5 text-xs font-bold rounded-lg transition-all ${noteType === 'ai_instruction' ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                                >
+                                    🤖 INSTRUCCIÓN IA
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="space-y-3">
                             <label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                                 <MessageSquare className="w-3.5 h-3.5" /> Contenido de la Nota

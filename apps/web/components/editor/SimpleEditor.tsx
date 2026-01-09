@@ -91,7 +91,7 @@ const SimpleEditor = forwardRef<SimpleEditorHandle, SimpleEditorProps>(({
         if (editor && content) {
             const parsedContent = parseContent(content);
             const currentHTML = editor.getHTML();
-            if (parsedContent !== currentHTML && !currentHTML.includes(content.substring(0, 50))) {
+            if (parsedContent !== currentHTML) {
                 editor.commands.setContent(parsedContent);
             }
         }
@@ -119,7 +119,7 @@ const SimpleEditor = forwardRef<SimpleEditorHandle, SimpleEditorProps>(({
                 .insertContent({
                     type: 'noteMarker',
                     attrs: {
-                        id: noteId,
+                        noteId: noteId,
                         number: noteNumber,
                         type: noteType,
                     },
@@ -225,8 +225,8 @@ const SimpleEditor = forwardRef<SimpleEditorHandle, SimpleEditorProps>(({
                 .editor-content .ProseMirror s { text-decoration: line-through; }
                 .editor-content .ProseMirror mark { 
                     padding: 0.125rem 0.2rem; 
-                    background-color: transparent; 
-                    border-bottom: 2px solid var(--primary-muted, rgba(16, 185, 129, 0.3));
+                    background-color: rgba(59, 130, 246, 0.1); 
+                    border-bottom: 2px solid var(--primary, #3b82f6);
                     color: inherit; 
                     border-radius: 0.25rem;
                 }

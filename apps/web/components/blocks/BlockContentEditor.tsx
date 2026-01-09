@@ -20,6 +20,7 @@ interface BlockContentEditorProps {
     onCloseCompare?: () => void;
     onVersionUpdated?: () => void;
     onNoteCreated?: () => void;
+    refreshTrigger?: number;
 }
 
 export default function BlockContentEditor({
@@ -31,7 +32,8 @@ export default function BlockContentEditor({
     comparingItem,
     onCloseCompare,
     onVersionUpdated,
-    onNoteCreated
+    onNoteCreated,
+    refreshTrigger = 0
 }: BlockContentEditorProps) {
     const [title, setTitle] = useState(block.title);
     const [content, setContent] = useState(block.content);
@@ -59,17 +61,70 @@ export default function BlockContentEditor({
     const [noteActiveEditorRef, setNoteActiveEditorRef] = useState<React.RefObject<SimpleEditorHandle | null> | null>(null);
 
     const loadNotes = useCallback(async () => {
-        const fetchedNotes = await listBlockComments(block.id);
-        setNotes(fetchedNotes);
+        try {
+            const fetchedNotes = await listBlockComments(block.id);
+            // Separate active and resolved notes
+            const active = fetchedNotes.filter(note => !note.resolved);
+            setNotes(active);
+            console.log(`📋 Loaded ${active.length} active notes for block ${block.id}`);
+        } catch (err) {
+            console.error('Failed to load notes:', err);
+        }
     }, [block.id]);
 
+    // Robust synchronization of markers and highlights in the editor
     useEffect(() => {
-        setTitle(block.title);
-        setContent(block.content);
-        setIsDirty(false);
-        loadLinks();
-        loadNotes();
-    }, [block.id]);
+        const editor = mainEditorRef.current?.getEditor();
+        if (!editor || (notes.length === 0 && content.length === 0)) return;
+
+        // Map for re-numbering per type
+        const reviewNotes = notes.filter(n => n.comment_type === 'review').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        const aiNotes = notes.filter(n => n.comment_type === 'ai_instruction').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+        const noteMap = new Map();
+        reviewNotes.forEach((n, i) => noteMap.set(n.id, { number: i + 1, type: 'review' }));
+        aiNotes.forEach((n, i) => noteMap.set(n.id, { number: i + 1, type: 'ai_instruction' }));
+
+        const activeIds = new Set(notes.map(n => n.id));
+        let contentModified = false;
+
+        editor.chain().command(({ state, tr }: any) => {
+            state.doc.descendants((node: any, pos: number) => {
+                if (node.type.name === 'noteMarker') {
+                    const noteId = node.attrs.noteId;
+                    const expected = noteMap.get(noteId);
+
+                    if (!activeIds.has(noteId) || !expected) {
+                        // DELETE marker for resolved or missing note
+                        tr.delete(pos, pos + node.nodeSize);
+                        contentModified = true;
+
+                        // Try to unset highlight in the preceding area (rough heuristic)
+                        const searchStart = Math.max(0, pos - 50);
+                        tr.removeMark(searchStart, pos, state.schema.marks.highlight);
+                    } else if (node.attrs.number !== expected.number || node.attrs.type !== expected.type) {
+                        // UPDATE marker if number or type changed
+                        tr.setNodeMarkup(pos, undefined, {
+                            ...node.attrs,
+                            number: expected.number,
+                            type: expected.type
+                        });
+                        contentModified = true;
+                    }
+                }
+                return true;
+            });
+            return true;
+        }).run();
+
+        if (contentModified) {
+            const newHTML = editor.getHTML();
+            console.log('🔄 Markers out of sync. updating content state...');
+            setContent(newHTML);
+            // Non-blocking save to persistent DB
+            updateBlock(block.id, newHTML).catch(e => console.error('Auto-sync save failed:', e));
+        }
+    }, [notes, block.id]);
 
     // Initialize version state when comparingItem changes
     useEffect(() => {
@@ -94,6 +149,23 @@ export default function BlockContentEditor({
         const fetchedLinks = await listBlockLinks(block.id);
         setLinks(fetchedLinks);
     }, [block.id]);
+
+    // Initial load when block changes
+    useEffect(() => {
+        setTitle(block.title);
+        setContent(block.content);
+        setIsDirty(false);
+        loadLinks();
+        loadNotes();
+    }, [block.id, loadLinks, loadNotes]);
+
+    // Handle refreshes
+    useEffect(() => {
+        if (refreshTrigger > 0) {
+            loadLinks();
+            loadNotes();
+        }
+    }, [refreshTrigger, loadLinks, loadNotes]);
 
     const handleSave = async () => {
         setSaving(true);
@@ -273,42 +345,47 @@ export default function BlockContentEditor({
             );
 
             if (newNote) {
-                // Calculate note number (existing notes count + 1)
-                const noteNumber = notes.length + 1;
+                console.log('✅ Note created:', newNote.id);
 
-                // Apply highlight to the selected text
+                // Update Editor UI
                 const editor = noteActiveEditorRef.current.getEditor();
                 if (editor) {
+                    const countOfSameType = notes.filter(n => n.comment_type === noteType).length;
+                    const noteNumber = countOfSameType + 1;
                     const highlightColor = noteType === 'ai_instruction'
                         ? 'rgba(16, 185, 129, 0.2)'
                         : 'rgba(59, 130, 246, 0.2)';
 
+                    console.log(`🖋️ Inserting marker #${noteNumber} for note ${newNote.id}`);
+
                     editor.chain()
                         .setTextSelection({ from: noteSelectionOffsets.from, to: noteSelectionOffsets.to })
                         .setHighlight({ color: highlightColor })
+                        .setTextSelection(noteSelectionOffsets.to)
+                        .insertContent({
+                            type: 'noteMarker',
+                            attrs: {
+                                noteId: newNote.id,
+                                number: noteNumber,
+                                type: noteType,
+                            },
+                        })
                         .run();
 
-                    // Insert superscript at end of selection
-                    noteActiveEditorRef.current.insertNoteMarker(noteNumber, noteType, newNote.id);
-
-                    // IMPORTANT: Save the block content immediately to persist the highlight and marker
                     const updatedHTML = editor.getHTML();
+                    console.log('📄 HTML with marker:', updatedHTML.includes('data-note-id') ? 'YES' : 'NO');
 
-                    try {
-                        // Save directly to database with the updated content
-                        await updateBlock(block.id, updatedHTML);
-                        setContent(updatedHTML);
-                        setIsDirty(false);
-                        console.log('✅ Block content auto-saved with note marker.');
-                    } catch (saveErr) {
-                        console.error('Auto-save after note creation failed:', saveErr);
-                    }
+                    // Save content to DB
+                    await updateBlock(block.id, updatedHTML);
+                    setContent(updatedHTML);
+                    setIsDirty(false);
                 }
 
-                // Reload notes
-                await loadNotes();
+                // Update notes state AFTER editor insertion to trigger sync correctly
+                setNotes(prev => [...prev, newNote]);
 
-                // Notify parent
+                // Reload notes and notify parent
+                await loadNotes();
                 if (onNoteCreated) onNoteCreated();
             }
         } catch (err) {
