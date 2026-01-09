@@ -11,7 +11,10 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "db:backup": "tsx scripts/backup-before-migration.ts",
+    "db:reset-safe": "npm run db:backup && npx supabase db reset",
+    "db:restore": "tsx scripts/restore-backup.ts"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.52.0",
