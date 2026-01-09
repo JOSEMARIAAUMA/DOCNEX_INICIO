@@ -3,15 +3,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { DocumentBlock, Resource, BlockResourceLink, BlockVersion } from '@docnex/shared';
 import { updateBlock, updateBlockTitle, listBlockLinks, removeLink, createResourceExtract, createLink, createBlockComment, listBlockComments } from '@/lib/api';
+import { processAutoLinks } from '@/lib/ai/semantic-engine';
 import { supabase } from '@/lib/supabase/client';
 import type { BlockComment } from '@docnex/shared';
 import { Editor } from '@tiptap/react';
 import SimpleEditor, { SimpleEditorHandle } from '../editor/SimpleEditor';
 import SharedToolbar from '../editor/SharedToolbar';
 import NoteDialog from '../notes/NoteDialog';
+import { TagInput } from '../ui/TagInput';
 
 interface BlockContentEditorProps {
     block: DocumentBlock;
+    allBlocks: DocumentBlock[];
     resources: Resource[];
     onUpdate: () => void;
     onSplit: (splitIndex: number) => void;
@@ -25,6 +28,7 @@ interface BlockContentEditorProps {
 
 export default function BlockContentEditor({
     block,
+    allBlocks,
     resources,
     onUpdate,
     onSplit,
@@ -37,6 +41,7 @@ export default function BlockContentEditor({
 }: BlockContentEditorProps) {
     const [title, setTitle] = useState(block.title);
     const [content, setContent] = useState(block.content);
+    const [tags, setTags] = useState<string[]>(block.tags || []);
     const [links, setLinks] = useState<BlockResourceLink[]>([]);
     const [notes, setNotes] = useState<BlockComment[]>([]);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
@@ -154,6 +159,7 @@ export default function BlockContentEditor({
     useEffect(() => {
         setTitle(block.title);
         setContent(block.content);
+        setTags(block.tags || []);
         setIsDirty(false);
         loadLinks();
         loadNotes();
@@ -173,8 +179,26 @@ export default function BlockContentEditor({
             if (title !== block.title) {
                 await updateBlockTitle(block.id, title);
             }
-            if (content !== block.content) {
-                await updateBlock(block.id, content);
+            // Check if tags changed (simple comparison)
+            const tagsChanged = JSON.stringify(tags) !== JSON.stringify(block.tags || []);
+
+            if (content !== block.content || tagsChanged) {
+                // Update block with content AND tags
+                await updateBlock(block.id, content, tags);
+
+                // --- SPRINT 5: Red de Conocimiento ---
+                // Disparar proceso de detección de links semánticos
+                try {
+                    const linksCreated = await processAutoLinks(
+                        { ...block, content, tags }, // Pass new content and tags
+                        allBlocks
+                    );
+                    if (linksCreated > 0) {
+                        console.log(`🧠 Motor Semántico: Se han creado ${linksCreated} nuevos enlaces automáticos.`);
+                    }
+                } catch (semanticErr) {
+                    console.error('Error in semantic engine:', semanticErr);
+                }
             }
             setIsDirty(false);
             onUpdate();
@@ -235,6 +259,7 @@ export default function BlockContentEditor({
     const handleRevert = () => {
         setTitle(block.title);
         setContent(block.content);
+        setTags(block.tags || []);
         setIsDirty(false);
     };
 
@@ -427,6 +452,17 @@ export default function BlockContentEditor({
                     className="text-2xl font-bold bg-transparent border-b-2 border-transparent hover:border-border focus:border-primary focus:outline-none w-full transition-all text-foreground"
                     placeholder="Título del bloque..."
                 />
+
+                {/* Tag Input */}
+                <div className="mt-3">
+                    <TagInput
+                        tags={tags}
+                        onTagsChange={(newTags) => {
+                            setTags(newTags);
+                            setIsDirty(true);
+                        }}
+                    />
+                </div>
             </div>
 
             {/* SHARED TOOLBAR - controls whichever editor has focus */}

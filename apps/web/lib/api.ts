@@ -1,6 +1,11 @@
 import { supabase } from './supabase/client';
 export type { Project, Document, DocumentBlock, Resource, BlockResourceLink, ResourceExtract, BlockComment, BlockVersion, DocumentHistory } from '@docnex/shared';
-import { Project, Document, DocumentBlock, Resource, BlockResourceLink, ResourceExtract, BlockComment, BlockVersion, DocumentHistory } from '@docnex/shared';
+import {
+    Workspace, Project, Document, DocumentBlock, Resource,
+    ResourceExtract, BlockResourceLink, BlockHighlight, BlockComment,
+    BlockVersion, DocumentHistory, BlockCommentReply, SemanticLink
+} from '@docnex/shared';
+
 
 // For MVP, we'll hardcode a default workspace and project if they don't exist, 
 // or fetch the first one found.
@@ -76,10 +81,20 @@ export const listBlocks = async (documentId: string): Promise<DocumentBlock[]> =
     return data || [];
 };
 
-export const createBlock = async (documentId: string, content: string, orderIndex: number, title: string = 'New Block'): Promise<DocumentBlock | null> => {
+import { extractKeywords } from './ai/keyword-extractor';
+
+// ... (existing imports)
+
+// ...
+
+export const createBlock = async (documentId: string, content: string, orderIndex: number, title: string = 'New Block', tags?: string[]): Promise<DocumentBlock | null> => {
+    // Auto-generate tags if not provided, or merge? 
+    // For now, if tags is undefined, we generate.
+    const finalTags = tags !== undefined ? tags : extractKeywords(content);
+
     const { data, error } = await supabase
         .from('document_blocks')
-        .insert([{ document_id: documentId, content, order_index: orderIndex, title }]) // Added title
+        .insert([{ document_id: documentId, content, order_index: orderIndex, title, tags: finalTags }]) // Added title and tags
         .select()
         .single();
 
@@ -87,14 +102,32 @@ export const createBlock = async (documentId: string, content: string, orderInde
     return data;
 };
 
-export const updateBlock = async (id: string, content: string): Promise<DocumentBlock | null> => {
+export const updateBlock = async (id: string, content: string, tags?: string[]): Promise<DocumentBlock | null> => {
+    const updates: any = { content, last_edited_at: new Date().toISOString() };
+
+    // If tags passed explicitly, use them. If not, we don't necessarily want to re-generate on every keystroke save unless requested.
+    // However, the user asked for "auto-tagging".
+    // BlockContentEditor handles generation manually in handleSave via logic. 
+    // Here we just persist what is sent.
+    if (tags !== undefined) updates.tags = tags;
+
     const { data, error } = await supabase
         .from('document_blocks')
-        .update({ content, last_edited_at: new Date().toISOString() })
+        .update(updates)
         .eq('id', id)
         .select()
         .single();
 
+    if (error) throw error;
+    return data;
+};
+
+export const getBlock = async (blockId: string): Promise<DocumentBlock> => {
+    const { data, error } = await supabase
+        .from('document_blocks')
+        .select('*')
+        .eq('id', blockId)
+        .single();
     if (error) throw error;
     return data;
 };
@@ -688,6 +721,58 @@ export const listDocumentHistory = async (documentId: string): Promise<DocumentH
         .eq('document_id', documentId)
         .order('created_at', { ascending: false });
 
+    if (error) throw error;
+    return data || [];
+};
+
+// ============================================================
+// SPRINT 5: Semantic Network
+// ============================================================
+
+export const createSemanticLink = async (link: Partial<SemanticLink>): Promise<SemanticLink | null> => {
+    const { data, error } = await supabase
+        .from('semantic_links')
+        .insert([link])
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteSemanticLink = async (linkId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('semantic_links')
+        .delete()
+        .eq('id', linkId);
+    if (error) throw error;
+};
+
+export const listSemanticLinksByBlock = async (blockId: string): Promise<SemanticLink[]> => {
+    const { data, error } = await supabase
+        .from('semantic_links')
+        .select('*')
+        .eq('source_block_id', blockId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const listSemanticLinksByDocument = async (documentId: string): Promise<SemanticLink[]> => {
+    const { data, error } = await supabase
+        .from('semantic_links')
+        .select('*')
+        .eq('target_document_id', documentId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const getBacklinksByBlock = async (blockId: string): Promise<SemanticLink[]> => {
+    const { data, error } = await supabase
+        .from('semantic_links')
+        .select('*')
+        .eq('target_block_id', blockId)
+        .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
 };
