@@ -9,7 +9,7 @@ export const NoteMarker = Node.create({
 
     addAttributes() {
         return {
-            id: {
+            noteId: {
                 default: null,
             },
             number: {
@@ -25,22 +25,27 @@ export const NoteMarker = Node.create({
         return [
             {
                 tag: 'span[data-note-id]',
-                getAttrs: (element) => ({
-                    id: (element as HTMLElement).getAttribute('data-note-id'),
-                    number: parseInt((element as HTMLElement).textContent || '0'),
-                    type: (element as HTMLElement).classList.contains('note-ref-ai') ? 'ai_instruction' : 'review',
-                }),
+                getAttrs: (element) => {
+                    const el = element as HTMLElement;
+                    console.log('📖 Parsing NoteMarker:', el.getAttribute('data-note-id'));
+                    return {
+                        noteId: el.getAttribute('data-note-id') || el.getAttribute('data-id'),
+                        number: parseInt(el.textContent || '0'),
+                        type: el.classList.contains('note-ref-ai') ? 'ai_instruction' : 'review',
+                    };
+                },
             },
         ];
     },
 
     renderHTML({ HTMLAttributes, node }) {
+        console.log('🎨 Rendering NoteMarker:', node.attrs.noteId);
         const typeClass = node.attrs.type === 'ai_instruction' ? 'note-ref-ai' : 'note-ref-review';
         return [
             'span',
             mergeAttributes(HTMLAttributes, {
                 'class': `note-ref ${typeClass}`,
-                'data-note-id': node.attrs.id,
+                'data-note-id': node.attrs.noteId,
             }),
             node.attrs.number.toString(),
         ];
