@@ -24,6 +24,7 @@ export default function BlockActionsMenu({ blockId, onAction, onClose }: BlockAc
     const actions = [
         { id: 'rename', label: 'Renombrar', icon: '✏️' },
         { id: 'duplicate', label: 'Duplicar', icon: '📋' },
+        { id: 'save-version', label: 'Guardar versión', icon: '📸' },
         { id: 'add-subblock', label: 'Añadir sub-bloque', icon: '🌿' },
         { id: 'divider1', label: '', divider: true },
         { id: 'merge-prev', label: 'Fusionar con anterior', icon: '⬆️' },

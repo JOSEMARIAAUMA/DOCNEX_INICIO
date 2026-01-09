@@ -17,7 +17,10 @@ import {
     softDeleteBlock,
     deleteDocument,
     createLink,
-    createSubBlock
+    createSubBlock,
+    createBlockVersion,
+    updateBlock,
+    updateBlockTitle
 } from '@/lib/api';
 
 import BlockList from '@/components/blocks/BlockList';
@@ -27,6 +30,7 @@ import NotesSection from '@/components/panels/NotesSection';
 import SupportDocumentsSection from '@/components/panels/SupportDocumentsSection';
 import ResourcesSection from '@/components/panels/ResourcesSection';
 import HistorySection from '@/components/panels/HistorySection';
+import VersionsSection from '@/components/panels/VersionsSection';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import NoteDetailsPanel from '@/components/notes/NoteDetailsPanel';
 import { BlockComment } from '@docnex/shared';
@@ -251,6 +255,22 @@ export default function DocumentEditorPage() {
                 }
                 break;
 
+            case 'save-version':
+                const blockToSave = blocks.find(b => b.id === blockId);
+                if (blockToSave) {
+                    try {
+                        await createBlockVersion(blockToSave);
+                        setSelectedBlockId(blockId as string);
+                        await loadData();
+                        handleDataRefresh();
+                        alert('✅ Versión guardada exitosamente');
+                    } catch (error) {
+                        console.error('Error al crear versión del bloque:', error);
+                        alert('❌ Error al guardar versión');
+                    }
+                }
+                break;
+
             case 'split':
                 // Will be handled by BlockContentEditor with selection
                 break;
@@ -411,6 +431,7 @@ export default function DocumentEditorPage() {
                             onCloseCompare={() => setComparingItem(null)}
                             onVersionUpdated={handleDataRefresh}
                             onNoteCreated={handleDataRefresh}
+                            refreshTrigger={refreshTrigger}
                         />
                     ) : (
                         <div className="h-full flex items-center justify-center text-muted-foreground italic">
@@ -453,6 +474,7 @@ export default function DocumentEditorPage() {
                                             setDetailNoteNumber(number);
                                             setIsDetailOpen(true);
                                         }}
+                                        onNotesUpdated={handleDataRefresh}
                                         onScrollToEditor={(noteId: string) => {
                                             if (selectedBlockId) {
                                                 const editorEl = typeof window !== 'undefined' ? window.document.getElementById(`editor-${selectedBlockId}`) as any : null;
@@ -478,6 +500,22 @@ export default function DocumentEditorPage() {
                                         resources={resources}
                                         onResourcesChange={loadData}
                                         onLinkResource={handleLinkResource} // Kept this from original
+                                    />
+                                </Section>
+
+                                <Section title="Control de Versiones" icon="📸">
+                                    <VersionsSection
+                                        block={selectedBlock}
+                                        onRestore={async (title, content) => {
+                                            if (selectedBlock) {
+                                                await updateBlock(selectedBlock.id, content);
+                                                await updateBlockTitle(selectedBlock.id, title);
+                                                await loadData();
+                                            }
+                                        }}
+                                        onCompare={handleCompare}
+                                        comparingVersionId={comparingItem?.id}
+                                        refreshTrigger={refreshTrigger}
                                     />
                                 </Section>
 
