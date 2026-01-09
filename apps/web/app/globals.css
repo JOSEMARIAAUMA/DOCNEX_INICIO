@@ -1,0 +1,128 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root {
+  /* Light mode - Soft taupe palette */
+  --background: #faf9f7;
+  --foreground: #3d3935;
+  --card: #ffffff;
+  --card-foreground: #3d3935;
+  --border: #e6e0d8;
+  --muted: #f2efeb;
+  --muted-foreground: #7a746e;
+  --accent: #eeeae4;
+  --accent-foreground: #3d3935;
+  --primary: #836b4d;
+  --primary-foreground: #faf9f7;
+  --ring: #836b4d40;
+}
+
+.dark {
+  /* Dark mode - Deep warm taupe palette */
+  --background: #121110;
+  --foreground: #eeeae4;
+  --card: #1c1a18;
+  --card-foreground: #eeeae4;
+  --border: #2d2a27;
+  --muted: #1e1c1a;
+  --muted-foreground: #c5bdb5;
+  /* Lighter taupe for better contrast */
+  --accent: #2d2a27;
+  --accent-foreground: #eeeae4;
+  --primary: #c2a172;
+  --primary-foreground: #121110;
+  --ring: #c2a17240;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glassmorphism utilities */
+.glass {
+  background: rgba(var(--card), 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.dark body {
+  background: radial-gradient(circle at top left, #1c1a18 0%, #121110 100%);
+  background-attachment: fixed;
+}
+
+/* Ensure prose content is readable */
+.prose {
+  color: var(--foreground);
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  color: var(--foreground);
+}
+
+.prose strong {
+  color: var(--foreground);
+}
+
+.prose a {
+  color: #8b7355;
+}
+
+.dark .prose a {
+  color: #b89968;
+}
+
+/* Fix code blocks */
+.prose code {
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.prose pre {
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.prose pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+/* Headline spacing fix */
+.headline-tight {
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.prose strong {
+  color: var(--foreground);
+  font-weight: 700;
+}

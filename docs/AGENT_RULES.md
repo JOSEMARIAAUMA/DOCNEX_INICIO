@@ -1,20 +1,28 @@
-\# Reglas para Antigravity (multiagente)
+# Reglas para Antigravity (multiagente)
 
+## Flujo
+1 issue = 1 rama = 1 PR hacia `dev`.
+No se empuja a `main`.
 
+## Alcance por sprints
+- Sprint 0: bootstrap repo + CI + Supabase local.
+- Sprint 1+: features.
 
-1\) Trabajar siempre desde una rama por issue: 1 issue = 1 branch = 1 PR.
+## Prohibiciones (salvo issue explícito)
+- No reestructurar el repo.
+- No introducir CRDT/Yjs, colaboración en edición simultánea, ni editor avanzado.
+- No introducir 3D ni grafos.
+- No tocar Supabase remoto.
 
-2\) No modificar archivos fuera del alcance del issue.
+## DB
+Todo cambio de esquema debe ir en `/supabase/migrations`.
+Nunca SQL suelto no versionado.
 
-3\) Cambios de DB solo por migraciones en /supabase/migrations (nunca SQL suelto no versionado).
-
-4\) No introducir CRDT/Yjs ni colaboración en edición simultánea en MVP salvo issue explícito.
-
-5\) La vista 3D no es grafo libre: caja + tronco + capítulos + 4 ramas fijas.
-
-6\) No cambiar la estructura del repo (/apps, /packages, /supabase) sin issue/ADR.
-
-7\) Cada PR debe pasar lint/typecheck/build y describir pruebas manuales.
+## Entrega
+Cada PR debe incluir:
+- objetivo
+- IN/OUT
+- pruebas mínimas
 
 
 

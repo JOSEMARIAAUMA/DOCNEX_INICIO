@@ -70,7 +70,23 @@ Sistema privado para arquitectos y abogados orientado a:
 
 \## Arranque (se completará en Sprint 0)
 
-Pendiente de inicializar monorepo y Supabase local (CLI).
+### Arranque
+
+1. Imstalar dependencias raíz (bootstrap monorepo):
+```bash
+npm install
+```
+
+2. Arrancar entorno de desarrollo:
+```bash
+npm run dev
+```
+
+3. Otros comandos:
+- `npm run build`: Compilar todos los paquetes/apps
+- `npm run lint`: Verificar linting
+- `npm run typecheck`: Verificar tipos TypeScript
+
 
 
 
