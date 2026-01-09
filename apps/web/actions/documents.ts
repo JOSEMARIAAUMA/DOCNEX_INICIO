@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { ImportItem } from '@/lib/ai/types';
+import { extractKeywords } from '@/lib/ai/keyword-extractor';
 
 export interface ImportResult {
     success: boolean;
@@ -85,6 +86,9 @@ export async function importItems(
 
         async function insertItemsRecursive(itemsToInsert: ImportItem[], parentId?: string) {
             for (const item of itemsToInsert) {
+                // Auto-generate tags for imported items
+                const tags = extractKeywords(item.content);
+
                 const { data: newBlock, error } = await supabase
                     .from('document_blocks')
                     .insert({
@@ -93,7 +97,8 @@ export async function importItems(
                         content: item.content,
                         block_type: 'section',
                         order_index: globalOrder++,
-                        parent_block_id: parentId
+                        parent_block_id: parentId,
+                        tags: tags // Insert auto-generated tags
                     })
                     .select()
                     .single();
