@@ -6,6 +6,7 @@ import { FileText, Settings as SettingsIcon, Shield, Users, Sun, Moon, Monitor }
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import AIContextConfig from "@/components/settings/AIContextConfig";
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -55,6 +56,11 @@ export default function SettingsPage() {
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* AI Global Context */}
+                <div className="md:col-span-2 lg:col-span-3">
+                    <AIContextConfig />
+                </div>
 
                 <Card className="bg-card border-border hover:border-primary/30 transition-all shadow-sm group">
                     <CardHeader>

@@ -26,6 +26,7 @@ export default function BlockActionsMenu({ blockId, onAction, onClose }: BlockAc
         { id: 'duplicate', label: 'Duplicar', icon: '📋' },
         { id: 'save-version', label: 'Guardar versión', icon: '📸' },
         { id: 'add-subblock', label: 'Añadir sub-bloque', icon: '🌿' },
+        { id: 'side-panel', label: 'Abrir en panel lateral', icon: '📖' },
         { id: 'divider1', label: '', divider: true },
         { id: 'merge-prev', label: 'Fusionar con anterior', icon: '⬆️' },
         { id: 'merge-next', label: 'Fusionar con siguiente', icon: '⬇️' },
@@ -45,7 +46,12 @@ export default function BlockActionsMenu({ blockId, onAction, onClose }: BlockAc
                 ) : (
                     <button
                         key={action.id}
-                        onClick={() => onAction(action.id)}
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault(); // Added preventDefault for extra safety
+                            e.stopPropagation();
+                            onAction(action.id);
+                        }}
                         className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-accent transition-colors ${action.danger ? 'text-red-500 hover:bg-red-500/10' : 'text-foreground hover:text-primary transition-colors'
                             }`}
                     >

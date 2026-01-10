@@ -8,6 +8,8 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { useEffect, useState, useRef } from 'react';
 import { marked } from 'marked';
+import { AIActionExtension } from './extensions/AIActionExtension';
+import FloatingContextToolbar from './FloatingContextToolbar';
 
 interface RichTextEditorProps {
     content: string;
@@ -21,8 +23,9 @@ interface RichTextEditorProps {
 // Convert markdown to HTML if needed
 function parseContent(content: string): string {
     if (!content) return '';
-    const markdownPatterns = /(\*\*|__|##|^\s*[-*+]\s|\n\|)/m;
-    if (markdownPatterns.test(content)) {
+    // Enhanced regex to catch Headers (#, ##), bold, lists, etc.
+    const markdownPatterns = /^(#|\*\*|__|-\s|\*\s|\d+\.|>|\|)/m;
+    if (markdownPatterns.test(content) || content.includes('\n')) {
         return marked.parse(content, { async: false }) as string;
     }
     return content;
@@ -255,6 +258,7 @@ export default function RichTextEditor({
             Highlight.configure({ multicolor: true }),
             TextStyle,
             Color,
+            AIActionExtension,
         ],
         content: parseContent(content),
         immediatelyRender: false,
@@ -325,7 +329,8 @@ export default function RichTextEditor({
                 />
             )}
 
-            <div className="editor-content">
+            <div className="editor-content relative">
+                <FloatingContextToolbar editor={editor} />
                 <EditorContent editor={editor} />
             </div>
 

@@ -3,19 +3,24 @@
 import { useState, useRef } from 'react';
 import { Resource } from '@docnex/shared';
 import { createResource, deleteResource } from '@/lib/api';
+import { LucideEye, Plus } from 'lucide-react'; // Assuming these icons are available
 
 interface ResourcesSectionProps {
     projectId: string;
+    documentId?: string;
     resources: Resource[];
     onResourcesChange: () => void;
-    onLinkResource?: (resourceId: string, extractId?: string) => void;
+    onLinkResource?: (resourceId: string) => void;
+    onOpenResource?: (resource: Resource) => void;
 }
 
 export default function ResourcesSection({
     projectId,
+    documentId,
     resources,
     onResourcesChange,
-    onLinkResource
+    onLinkResource,
+    onOpenResource
 }: ResourcesSectionProps) {
     const [showAddForm, setShowAddForm] = useState(false);
     const [newTitle, setNewTitle] = useState('');
@@ -27,7 +32,7 @@ export default function ResourcesSection({
         if (!newTitle.trim()) return;
 
         try {
-            await createResource(projectId, newTitle, 'url', { source_uri: newUrl || undefined });
+            await createResource(projectId, newTitle, 'url', { source_uri: newUrl || undefined }, documentId);
             setNewTitle('');
             setNewUrl('');
             setShowAddForm(false);
@@ -45,7 +50,7 @@ export default function ResourcesSection({
         try {
             // For now, just create a resource entry with the file name
             // Full file upload would require storage integration
-            await createResource(projectId, file.name, 'other');
+            await createResource(projectId, file.name, 'other', {}, documentId);
             onResourcesChange();
         } catch (err) {
             console.error('Error uploading file:', err);
@@ -158,13 +163,22 @@ export default function ResourcesSection({
                                     )}
                                 </div>
                                 <div className="flex gap-1">
+                                    {onOpenResource && (
+                                        <button
+                                            onClick={() => onOpenResource?.(resource)}
+                                            className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                                            title="Abrir en panel lateral"
+                                        >
+                                            <LucideEye className="w-4 h-4" />
+                                        </button>
+                                    )}
                                     {onLinkResource && (
                                         <button
                                             onClick={() => onLinkResource(resource.id)}
-                                            className="text-xs text-primary hover:opacity-80 transition-opacity"
-                                            title="Vincular al bloque"
+                                            className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+                                            title="Vincular a bloque"
                                         >
-                                            📌
+                                            <Plus className="w-4 h-4" />
                                         </button>
                                     )}
                                     <button

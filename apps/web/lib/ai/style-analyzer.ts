@@ -1,5 +1,5 @@
 export interface TextStyle {
-    type: 'bold' | 'italic' | 'code' | 'highlight' | 'strikethrough' | 'underline' | 'list' | 'quote';
+    type: 'bold' | 'italic' | 'code' | 'highlight' | 'strikethrough' | 'underline' | 'list' | 'quote' | 'header' | 'paragraph';
     label: string;
     pattern: RegExp;
     example: string;
@@ -14,57 +14,43 @@ export interface StyleAnalysis {
 
 export const AVAILABLE_TEXT_STYLES: TextStyle[] = [
     {
-        type: 'bold',
-        label: 'Negrita',
-        pattern: /\*\*(.+?)\*\*|__(.+?)__/g,
-        example: '**texto**'
-    },
-    {
-        type: 'italic',
-        label: 'Cursiva',
-        pattern: /\*(.+?)\*|_(.+?)_/g,
-        example: '*texto*'
-    },
-    {
-        type: 'code',
-        label: 'Código',
-        pattern: /`(.+?)`/g,
-        example: '`código`'
-    },
-    {
-        type: 'highlight',
-        label: 'Resaltado',
-        pattern: /==(.+?)==/g,
-        example: '==texto=='
-    },
-    {
-        type: 'strikethrough',
-        label: 'Tachado',
-        pattern: /~~(.+?)~~/g,
-        example: '~~texto~~'
-    },
-    {
-        type: 'underline',
-        label: 'Subrayado',
-        pattern: /<u>(.+?)<\/u>/g,
-        example: '<u>texto</u>'
+        type: 'header',  // New structural type
+        label: 'Encabezados',
+        pattern: /^#{1,6}\s+.+/gm,
+        example: '# Título'
     },
     {
         type: 'list',
-        label: 'Lista / Viñeta',
+        label: 'Listas',
         pattern: /^[\s]*[-*+]\s+|^[\s]*\d+\.\s+/gm,
         example: '- elemento'
     },
     {
         type: 'quote',
-        label: 'Cita',
-        pattern: /^> .+/gm,
+        label: 'Citas',
+        pattern: /^>\s+.+/gm,
         example: '> cita'
+    },
+    {
+        type: 'code',
+        label: 'Código',
+        pattern: /`{3}[\s\S]*?`{3}|`[^`]+`/g,
+        example: '```código```'
+    },
+    {
+        type: 'paragraph', // Generic text
+        label: 'Texto Normal',
+        pattern: /^(?![#>-])(?:(?!\d+\.|[-*]).)+$/gm, // Lines that are NOT headers, quotes, or lists.
+        example: 'Texto normal...'
     }
 ];
 
+
 export function analyzeText(text: string): StyleAnalysis {
-    const lines = text.split('\n');
+    // Optimization: Limit analysis to first 100,000 characters to prevent freezing on large files.
+    // This provides enough context for style and header detection without parsing the entire document.
+    const sample = text.length > 100000 ? text.slice(0, 100000) : text;
+    const lines = sample.split('\n');
     const headerCounts: Record<number, number> = {};
     const foundStyles: Set<TextStyle['type']> = new Set();
 
@@ -79,7 +65,7 @@ export function analyzeText(text: string): StyleAnalysis {
 
     // Detect text styles
     for (const style of AVAILABLE_TEXT_STYLES) {
-        if (style.pattern.test(text)) {
+        if (style.pattern.test(sample)) {
             foundStyles.add(style.type);
         }
     }

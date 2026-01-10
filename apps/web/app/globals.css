@@ -19,19 +19,22 @@
 
 .dark {
   /* Dark mode - Deep warm taupe palette */
-  --background: #121110;
-  --foreground: #eeeae4;
-  --card: #1c1a18;
-  --card-foreground: #eeeae4;
+  --background: #0f0e0d;
+  /* Slightly darker for depth */
+  --foreground: #f2efeb;
+  /* Brighter for contrast */
+  --card: #181614;
+  --card-foreground: #f2efeb;
   --border: #2d2a27;
   --muted: #1e1c1a;
-  --muted-foreground: #c5bdb5;
-  /* Lighter taupe for better contrast */
+  --muted-foreground: #a8a095;
+  /* Warmer and slightly darker than previous to avoid "washed out" look while keeping contrast */
   --accent: #2d2a27;
-  --accent-foreground: #eeeae4;
-  --primary: #c2a172;
-  --primary-foreground: #121110;
-  --ring: #c2a17240;
+  /* Darker than muted but lighter than background */
+  --accent-foreground: #f2efeb;
+  --primary: #d4ae7b;
+  --primary-foreground: #0f0e0d;
+  --ring: #d4ae7b40;
 }
 
 @theme inline {
@@ -116,6 +119,7 @@ body {
   border: none;
   padding: 0;
 }
+
 /* Headline spacing fix */
 .headline-tight {
   line-height: 1.1;
@@ -125,4 +129,34 @@ body {
 .prose strong {
   color: var(--foreground);
   font-weight: 700;
+}
+
+/* Note Markers */
+.note-ref {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.2em;
+  font-size: 0.75em;
+  font-weight: 700;
+  border-radius: 999px;
+  margin: 0 0.1em;
+  cursor: pointer;
+  vertical-align: super;
+  transition: transform 0.2s;
+  color: white;
+}
+
+.note-ref-review {
+  background-color: #3b82f6;
+}
+
+.note-ref-ai {
+  background-color: #10b981;
+}
+
+.note-ref:hover {
+  transform: scale(1.2);
+  z-index: 10;
 }
