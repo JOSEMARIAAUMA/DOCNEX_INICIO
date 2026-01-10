@@ -1,23 +1,177 @@
-
-import { splitByHeader, splitBySemanticsMock, splitByPattern, buildHierarchy } from './classifiers';
 import { ImportItem, SplitStrategy } from './types';
+import { BlockItem } from './schemas';
 
+// Server Actions
+import { splitDocumentWithAI, chatWithAI, analyzeTextWithAI } from '@/actions/ai';
+import { AIContext } from '@/types/ai';
 
+// Legacy imports for fallback compatibility
+import { splitByHeader, splitByPattern } from './classifiers';
 import { splitByIndex, splitBySmartNumbering } from './smart-splitter';
 
+// Security & Validation imports
+import { sanitizeInput, rateLimiter } from './input-sanitizer';
+import { validateImportItem } from './validation-schemas';
+import { AIValidationError, AITimeoutError, AISecurityError } from './ai-error-types';
+
+/**
+ * AI Agent powered by Gemini 2.5 Flash (via Server Actions)
+ * Replaces the old regex-based system with real AI understanding
+ */
 export class AIAgent {
+
+    constructor() {
+        // No need to check env here as we delegate to server actions
+    }
+
+    /**
+     * Process text using AI or fallback to legacy methods
+     * NOW WITH SECURITY PATCHES: size limits, timeouts, validation
+     */
     async processText(
         text: string,
         strategy: SplitStrategy,
         options: {
-            headerLevel?: number,
-            customPattern?: string,
-            childPattern?: string,
-            isHierarchical?: boolean,
-            indexText?: string
-        } = {}
+            headerLevel?: number;
+            customPattern?: string;
+            childPattern?: string;
+            isHierarchical?: boolean;
+            indexText?: string;
+            context?: AIContext; // Added Global Context
+        } = {},
+        timeout: number = 60000 // Increased timeout for AI
     ): Promise<ImportItem[]> {
-        const { headerLevel = 2, customPattern = '', childPattern = '', isHierarchical = false, indexText = '' } = options;
+        // SECURITY PATCH #1: File size validation (max 5MB)
+        const MAX_TEXT_SIZE = 5 * 1024 * 1024;
+        if (text.length > MAX_TEXT_SIZE) {
+            throw new AIValidationError(
+                `Text too large: ${(text.length / 1024 / 1024).toFixed(2)}MB (max 5MB)`,
+                ['Input exceeds maximum size']
+            );
+        }
+
+        // SECURITY PATCH #2: Empty input check
+        if (!text || text.trim().length === 0) {
+            throw new AIValidationError('Input text is empty', ['Empty input']);
+        }
+
+        // SECURITY PATCH #3: Add timeout wrapper
+        return Promise.race([
+            this._processTextInternal(text, strategy, options),
+            new Promise<ImportItem[]>((_, reject) =>
+                setTimeout(
+                    () => reject(new AITimeoutError(`Processing timed out after ${timeout}ms`)),
+                    timeout
+                )
+            )
+        ]);
+    }
+
+    /**
+     * Internal processing method (wrapped with timeout)
+     */
+    private async _processTextInternal(
+        text: string,
+        strategy: SplitStrategy,
+        options: any
+    ): Promise<ImportItem[]> {
+        const { headerLevel = 2, customPattern = '', indexText = '', context } = options;
+
+        // Try using AI Server Action first
+        if (strategy === 'semantic' || strategy === 'index' || strategy === 'header') { // Enhanced 'header' with simple AI check if needed? No, stick to legacy for header unless specifically requested? 
+            // Actually, let's prefer AI for complex strategies or if we want "Smart" behavior
+            // For now, only semantic/index MUST use AI.
+
+            try {
+                const instructions = this.buildInstructions(strategy, options);
+
+                // Call Server Action
+                const result = await splitDocumentWithAI(text, instructions, context);
+
+                if (result.success && result.blocks) {
+                    const items = this.convertBlocksToImportItems(result.blocks);
+                    // SECURITY PATCH #4: Validate all AI responses
+                    return this.validateAndSanitizeItems(items);
+                } else {
+                    console.warn('[AIAgent] Server Action failed:', result.error);
+                    // Fallback to legacy if AI fails
+                }
+            } catch (error) {
+                console.error('[AIAgent] AI processing failed, falling back:', error);
+                // Fall through to legacy mode
+            }
+        }
+
+        // Legacy fallback mode (regex-based)
+        const legacyItems = await this.processTextLegacy(text, strategy, options);
+        return this.validateAndSanitizeItems(legacyItems);
+    }
+
+    /**
+     * Build natural language instructions for Gemini
+     */
+    private buildInstructions(strategy: SplitStrategy, options: any): string {
+        if (strategy === 'index' && options.indexText) {
+            return `Divide el documento según este índice de referencia:\n\n${options.indexText}\n\nExtrae cada sección mencionada en el índice como un bloque separado.`;
+        }
+
+        if (strategy === 'semantic') {
+            return 'Divide este documento en bloques lógicos según su estructura semántica y temática. Identifica secciones, capítulos, artículos o temas principales.';
+        }
+
+        // Default
+        return 'Analiza este documento y divídelo en bloques estructurados según su organización natural.';
+    }
+
+    /**
+     * Convert Gemini BlockItem[] to ImportItem[] (legacy format for wizard)
+     */
+    private convertBlocksToImportItems(blocks: BlockItem[]): ImportItem[] {
+        return blocks.map(block => ({
+            id: crypto.randomUUID(),
+            title: block.title,
+            content: block.content,
+            target: block.target || 'active_version',
+            children: block.children ? this.convertBlocksToImportItems(block.children) : undefined
+        }));
+    }
+
+    /**
+     * SECURITY PATCH #4: Validate and sanitize all ImportItems
+     */
+    private validateAndSanitizeItems(items: ImportItem[]): ImportItem[] {
+        return items.map(item => {
+            const validation = validateImportItem(item);
+
+            if (!validation.success) {
+                console.warn('[AIAgent] Invalid ImportItem detected, using fallback:', validation.errors);
+                // Return safe fallback
+                return {
+                    id: crypto.randomUUID(),
+                    title: item.title || 'Invalid Block',
+                    content: item.content || '',
+                    target: 'active_version' as const
+                };
+            }
+
+            // Recursively validate children
+            if (validation.data.children && validation.data.children.length > 0) {
+                validation.data.children = this.validateAndSanitizeItems(validation.data.children);
+            }
+
+            return validation.data;
+        });
+    }
+
+    /**
+     * Legacy regex-based processing (fallback when Gemini unavailable)
+     */
+    private async processTextLegacy(
+        text: string,
+        strategy: SplitStrategy,
+        options: any
+    ): Promise<ImportItem[]> {
+        const { headerLevel = 2, customPattern = '', indexText = '' } = options;
 
         if (strategy === 'index' && indexText) {
             const results = splitByIndex(text, indexText);
@@ -29,17 +183,10 @@ export class AIAgent {
             }));
         }
 
-        if (isHierarchical && (strategy === 'header' || strategy === 'custom')) {
-            const pPattern = strategy === 'header' ? `^#{${headerLevel}}\\s+(.+)` : customPattern;
-            const cPattern = childPattern || `^#{${headerLevel + 1}}\\s+(.+)`;
-            return buildHierarchy(text.split('\n'), pPattern, cPattern);
-        }
-
         switch (strategy) {
             case 'header':
                 return splitByHeader(text, headerLevel);
             case 'custom':
-                // Check if it's our special "Smart Numbering" token
                 if (customPattern === 'SMART_NUMBERING') {
                     const results = splitBySmartNumbering(text);
                     return results.map(r => ({
@@ -51,10 +198,15 @@ export class AIAgent {
                 }
                 return splitByPattern(text, customPattern);
             case 'semantic':
-                return splitBySemanticsMock(text);
+                // Legacy semantic was just a mock, return full text as one block
+                return [{
+                    id: crypto.randomUUID(),
+                    title: 'Documento Completo',
+                    content: text,
+                    target: 'active_version'
+                }];
             case 'manual':
             default:
-                // Treat whole text as one block
                 return [{
                     id: crypto.randomUUID(),
                     title: 'Imported Text',
@@ -64,183 +216,123 @@ export class AIAgent {
         }
     }
 
-    async generatePatternsFromExamples(examples: string): Promise<{ parentPattern: string, childPattern: string }> {
-        // AI logic to deduce pattern from user examples
+    /**
+     * Generate regex patterns from examples
+     */
+    async generatePatternsFromExamples(examples: string, context?: AIContext): Promise<{ parentPattern: string; childPattern: string }> {
+        try {
+            const response = await chatWithAI(
+                `Dado este ejemplo de inicio de bloque: "${examples}", ¿qué patrón regex usarías para detectar bloques similares? Responde SOLO con el regex, sin explicaciones.`,
+                { userInstructions: 'Generar patrón desde ejemplo' },
+                context
+            );
+
+            if (response.success && response.reply) {
+                return { parentPattern: response.reply.trim(), childPattern: '' };
+            }
+        } catch (error) {
+            console.error('[AIAgent] Error generating pattern with AI:', error);
+        }
+
+        // Legacy fallback
+        return this.generatePatternsLegacy(examples);
+    }
+
+    private generatePatternsLegacy(examples: string): { parentPattern: string; childPattern: string } {
         const trimmed = examples.trim();
-        const low = trimmed.toLowerCase();
         if (trimmed.length < 1) return { parentPattern: '', childPattern: '' };
 
-        // 1. Structural Detection: Markdown Headers (e.g., "# Header")
         const headerMatch = trimmed.match(/^(#{1,6})\s+/);
         if (headerMatch) {
             const hashes = headerMatch[1];
             return { parentPattern: `^${hashes}\\s+.+`, childPattern: '' };
         }
 
-        // 2. Structural Detection: Known structured patterns
-        if (low.includes('a)') || low.includes('b)')) {
-            return { parentPattern: '^\\d+\\.', childPattern: '^[a-z]\\)' };
-        }
-
-        // Smart Numbering Detection (1., 2., 3...)
-        // If the example is just a number like "1. Title", we might suggest Smart Numbering logic
         if (/^\d+[\.\)]\s+.+/.test(trimmed)) {
-            // Return a special token for our agent to use smart splitter
-            // But for now, let's just return the regex if user wants regex.
-            // However, the user complained about regex being too dumb.
-            // Let's modify the UI to allow selecting "Smart Numbering" as a named strategy?
-            // Or just use the token.
-            const seperator = trimmed.match(/^\d+([\.\)])/)?.[1] || '.';
-            return { parentPattern: `^\\d+\\${seperator}`, childPattern: '' };
+            const separator = trimmed.match(/^\d+([\.\)])/)?.[1] || '.';
+            return { parentPattern: `^\\d+\\${separator}`, childPattern: '' };
         }
 
-        if (/^t[íi]tulo/i.test(low)) {
-            return { parentPattern: '^T[ÍI]TULO\\s+[IVX0-9]+', childPattern: '^CAP[ÍI]TULO\\s+\\d+' };
-        }
-        if (/^cap[íi]tulo/i.test(low)) {
-            return { parentPattern: '^CAP[ÍI]TULO\\s+\\d+', childPattern: '^ART[ÍI]CULO\\s+\\d+' };
-        }
-
-        // 4. Structural Detection: Uppercase Titles
-        if (trimmed.split('\n').length === 1 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed)) {
-            return { parentPattern: '^[A-ZÁÉÍÓÚÑ0-9\\s]{3,}$', childPattern: '' };
-        }
-
-        // 5. Fallback
         const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        let pattern = `^${escaped}`;
-        if (/^\d+/.test(trimmed)) {
-            pattern = pattern.replace(/^\d+/, '\\d+');
-        } else if (/^[A-Z]\./.test(trimmed)) {
-            pattern = pattern.replace(/^[A-Z]/, '[A-Z]');
+        return { parentPattern: `^${escaped}`, childPattern: '' };
+    }
+
+    /**
+     * Smart chat with document context
+     * NOW WITH SECURITY PATCHES: input sanitization, rate limiting
+     */
+    async chat(
+        message: string,
+        context: {
+            strategy: SplitStrategy;
+            currentPattern: string;
+            textPreview: string;
+            isSubBlock?: boolean;
+            globalContext?: AIContext; // Added Global Context
+        }
+    ): Promise<{ reply: string; action?: { type: 'set_pattern' | 'set_index' | 'set_strategy'; value: string } }> {
+        // SECURITY PATCH #5: Rate limiting
+        if (!rateLimiter.canMakeRequest()) {
+            const waitTime = Math.ceil(rateLimiter.getTimeUntilReset() / 1000);
+            return {
+                reply: `Has excedido el límite de solicitudes. Por favor, espera ${waitTime} segundos.`
+            };
         }
 
-        return { parentPattern: pattern, childPattern: '' };
+        // SECURITY PATCH #6: Input sanitization for prompt injection
+        const sanitized = sanitizeInput(message, 10000); // 10KB max for chat
+        if (sanitized.blocked) {
+            throw new AISecurityError(
+                sanitized.blockReason || 'Invalid input detected',
+                'prompt_injection'
+            );
+        }
+
+        try {
+            const result = await chatWithAI(message, {
+                documentPreview: context.textPreview,
+                currentStrategy: context.strategy,
+                userInstructions: context.currentPattern
+            }, context.globalContext);
+
+            if (result.success && result.reply) {
+                return { reply: result.reply };
+            } else {
+                return { reply: 'Lo siento, hubo un error técnico. Inténtalo de nuevo.' };
+            }
+        } catch (error) {
+            console.error('[AIAgent] Chat error:', error);
+            // Fallback to legacy chat if network fails? No, legacy was too basic.
+            return { reply: 'Error de conexión con el agente IA.' };
+        }
     }
 
-    // Placeholder for real LLM integration
-    async suggestTarget(content: string): Promise<'active_version' | 'reference' | 'note'> {
-        return content.length < 200 ? 'note' : 'active_version';
+    /**
+     * Analyze text for quick insights
+     */
+    async analyzeText(text: string, type: 'summary' | 'structure' = 'summary', context?: AIContext): Promise<string> {
+        const result = await analyzeTextWithAI(text, type, context);
+        if (result.success && result.analysis) {
+            return result.analysis;
+        }
+        return 'Análisis no disponible';
     }
+
+    /**
+     * Detect if text contains a table of contents
+     */
     async detectIndexFromText(text: string): Promise<string | null> {
-        // ... previous implementation ...
         if (!text) return null;
-        // (Keeping existing logic but wrapping it properly if needed, 
-        // essentially just fixing the method signature if I changed it, 
-        // but here I am adding the NEW chat method below it)
-        return this._internalDetectIndex(text);
-    }
 
-    private _internalDetectIndex(text: string): string | null {
         const tocHeaderRegex = /^#{0,3}\s*(?:Índice|Tabla de Contenidos|Table of Contents|Contenido|Sumario)(?:\s+de\s+Contenido)?\s*$/im;
         const match = text.match(tocHeaderRegex);
 
         if (match && match.index !== undefined) {
-            const afterHeader = text.slice(match.index + match[0].length);
-            // ... existing logic ...
-            // For brevity in this replacement I will just re-implement the core logic or call a helper if I had one.
-            // Since I can't easily refactor into a helper without viewing all code again, 
-            // I will assume the previous method is fine and I just append `chat` at the end of the class.
-            // WAIT, I should just append the method to the class.
-            // I will use a cleaner approach: insert `chat` before the end of the class.
-            return "INDEX_CONTENT_MOCK"; // Placeholder if I was replacing, but I want to APPEND.
+            const afterHeader = text.slice(match.index + match[0].length, match.index + match[0].length + 2000);
+            return afterHeader.trim();
         }
+
         return null;
-    }
-
-    // Inserting chat method
-    // Modifying chat method to be smarter and support sub-blocks
-    async chat(
-        message: string,
-        context: { strategy: SplitStrategy, currentPattern: string, textPreview: string, isSubBlock?: boolean }
-    ): Promise<{ reply: string, action?: { type: 'set_pattern' | 'set_index' | 'set_strategy', value: string } }> {
-        // Retrieve DNA / Master Instructions from localStorage (client-side only)
-        let masterInstructions = '';
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('docnex_ai_context');
-            if (saved) {
-                try {
-                    const dna = JSON.parse(saved);
-                    masterInstructions = `
-                        ROL: ${dna.role}
-                        TONO: ${dna.tone}
-                        OBJETIVO: ${dna.objective}
-                        INSTRUCCIONES EXTRA: ${dna.customInstructions}
-                        ---
-                    `.trim();
-                } catch (e) {
-                    console.error("Error parsing AI DNA", e);
-                }
-            }
-        }
-
-        const lower = message.toLowerCase();
-        // ... in a real integration, we would send masterInstructions to the LLM.
-        // For this mock, we just use it to log or slightly affect behavior.
-        if (masterInstructions) {
-            console.log("[AI Agent] Applying Master Instructions:", masterInstructions);
-        }
-
-        // 1. Detection of explicit Index/TOC content
-        // An index typically has numbers and newlines, or "Section..." lines.
-        const lines = message.split('\n').filter(l => l.trim().length > 0);
-        const looksLikeIndex = lines.length >= 3 && lines.every(l => /^\d+|•|-|SECTION|CHAPTER|CAPÍTULO|ARTÍCULO/i.test(l.trim()) || l.includes('...'));
-
-        if (context.strategy === 'index') {
-            if (looksLikeIndex) {
-                return {
-                    reply: "He actualizado el Índice Maestro con el contenido que me has proporcionado.",
-                    action: { type: 'set_index', value: message }
-                };
-            }
-
-            // If it's an instruction regarding the index
-            if (lower.includes('primeras líneas') || lower.includes('skip') || lower.includes('ignora')) {
-                return {
-                    reply: "Entendido. Para refinar el índice, por favor edita el texto del índice directamente en el área de texto o pega solo la parte válida.",
-                    // Ideally we would support "refine_index" action, but for now we guide the user.
-                };
-            }
-
-            // Fallback: User probably wants to switch to custom pattern if they are describing a pattern
-            if (lower.includes('patrón') || lower.includes('regex') || lower.includes('empieza por')) {
-                const patterns = await this.generatePatternsFromExamples(message);
-                return {
-                    reply: "Intuyo que prefieres definir un patrón manual en lugar de un índice explícito. He configurado el patrón según tu descripción.",
-                    action: { type: 'set_pattern', value: patterns.parentPattern }
-                };
-            }
-
-            return {
-                reply: "No estoy seguro si eso es un índice o una instrucción. Si es el índice, asegúrate de pegarlo completo (varias líneas). Si es una instrucción, trata de ser más específico sobre qué deben tener los bloques (ej. 'Los bloques empiezan por Párrafo X')."
-            };
-        }
-
-        // 2. Custom Pattern Logic (Instructions)
-        if (context.strategy === 'custom' || context.strategy === 'header') {
-            // Handle "Chapter", "Page", etc. logic from before
-            if (lower.includes('capítulo') || lower.includes('chapter')) {
-                return {
-                    reply: "Entendido. He configurado el patrón para detectar 'Capítulo' seguido de un número.",
-                    action: { type: 'set_pattern', value: '^CAP[ÍI]TULO\\s+\\d+' }
-                };
-            }
-            if (lower.includes('artículo') || lower.includes('article')) {
-                return {
-                    reply: "He configurado el patrón para Artículos legales (Artículo X).",
-                    action: { type: 'set_pattern', value: '^ART[ÍI]CULO\\s+\\d+' }
-                };
-            }
-
-            // General instruction -> Regex generation
-            const patterns = await this.generatePatternsFromExamples(message);
-            return {
-                reply: `He intentado traducir tu instrucción a un patrón: "${patterns.parentPattern}". Pruébala.`,
-                action: { type: 'set_pattern', value: patterns.parentPattern }
-            };
-        }
-
-        return { reply: "Por favor, selecciona una estrategia (Índice o Instrucciones) para poder ayudarte mejor." };
     }
 }
 

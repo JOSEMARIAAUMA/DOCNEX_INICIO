@@ -30,7 +30,7 @@ export default function KnowledgeGraph({
     onToggleFullscreen
 }: KnowledgeGraphProps) {
     const { theme } = useTheme();
-    const fgRef = useRef<any>();
+    const fgRef = useRef<any>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState({ w: width, h: height });
 
@@ -88,7 +88,7 @@ export default function KnowledgeGraph({
                 linkWidth={link => (link as GraphLink).width || 1}
                 linkDirectionalParticles={link => (link as GraphLink).type === 'manual' ? 2 : 0}
                 linkDirectionalParticleSpeed={0.005}
-                linkLineDash={link => (link as GraphLink).dashed ? [2, 2] : undefined}
+                linkLineDash={link => (link as GraphLink).dashed ? [2, 2] : null}
                 onNodeClick={(node) => onNodeClick && onNodeClick(node as GraphNode)}
 
                 // Custom Node Paint

@@ -1,5 +1,5 @@
 import { supabase } from './supabase/client';
-export type { Project, Document, DocumentBlock, Resource, BlockResourceLink, ResourceExtract, BlockComment, BlockVersion, DocumentHistory } from '@docnex/shared';
+export type { Workspace, Project, Document, DocumentBlock, Resource, BlockResourceLink, ResourceExtract, BlockComment, BlockVersion, DocumentHistory } from '@docnex/shared';
 import {
     Workspace, Project, Document, DocumentBlock, Resource,
     ResourceExtract, BlockResourceLink, BlockHighlight, BlockComment,
@@ -21,6 +21,22 @@ export const getActiveProject = async (): Promise<Project | null> => {
     }
 
     return projects?.[0] || null;
+};
+
+/**
+ * List all projects
+ */
+export const listProjects = async (): Promise<Project[]> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error listing projects:', error);
+        return [];
+    }
+    return data || [];
 };
 
 // Documents
@@ -47,14 +63,20 @@ export const listDocuments = async (projectId: string, category: string = 'main'
 export const getDocument = async (id: string): Promise<Document | null> => {
     const { data, error } = await supabase
         .from('documents')
-        .select('*')
+        .select(`
+            *,
+            project:projects (
+                *,
+                workspace:workspaces (*)
+            )
+        `)
         .eq('id', id)
         .single();
     if (error) {
         console.error('[API] getDocument Error:', error);
         throw error;
     }
-    return data;
+    return data as any;
 }
 
 export const createDocument = async (projectId: string, title: string, category: string = 'main'): Promise<Document | null> => {
@@ -377,6 +399,22 @@ export const listDeletedBlocks = async (documentId: string): Promise<DocumentBlo
         .eq('is_deleted', true)
         .order('updated_at', { ascending: false });
     if (error) throw error;
+    return data || [];
+};
+
+/**
+ * List all semantic links for a document
+ */
+export const listSemanticLinks = async (documentId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+        .from('semantic_links')
+        .select('*')
+        .eq('target_document_id', documentId);
+
+    if (error) {
+        console.error("Error listing semantic links:", error);
+        return [];
+    }
     return data || [];
 };
 
@@ -891,4 +929,200 @@ export const getBacklinksByBlock = async (blockId: string): Promise<SemanticLink
         .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
+};
+
+// ============================================================
+// SPRINT 4: Project Management & Export/Import
+// ============================================================
+
+export const createWorkspace = async (name: string): Promise<Workspace | null> => {
+    const { data, error } = await supabase
+        .from('workspaces')
+        .insert([{ name }])
+        .select()
+        .single();
+    if (error) {
+        console.error('Error creating workspace:', error);
+        throw error;
+    }
+    return data;
+};
+
+export const getWorkspaces = async (): Promise<Workspace[]> => {
+    const { data, error } = await supabase
+        .from('workspaces')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const updateWorkspace = async (id: string, updates: Partial<Workspace>): Promise<Workspace | null> => {
+    const { data, error } = await supabase
+        .from('workspaces')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteWorkspace = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+};
+
+export const createProject = async (workspaceId: string, name: string, description: string = ''): Promise<Project | null> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .insert([{ workspace_id: workspaceId, name, description }])
+        .select()
+        .single();
+    if (error) {
+        console.error('Error creating project:', error);
+        throw error;
+    }
+    return data;
+};
+
+export const updateProject = async (id: string, updates: Partial<Project>): Promise<Project | null> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteProject = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+};
+
+export const listProjectsByWorkspace = async (workspaceId: string): Promise<Project[]> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const exportProjectToJSON = async (projectId: string): Promise<string> => {
+    // 1. Fetch Project
+    const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).single();
+    if (!project) throw new Error('Project not found');
+
+    // 2. Fetch Resources
+    const { data: resources } = await supabase.from('resources').select('*').eq('project_id', projectId);
+
+    // 3. Fetch Documents (and their children)
+    const { data: documents } = await supabase.from('documents').select('*').eq('project_id', projectId);
+
+    // 4. Fetch Blocks for all documents
+    let blocks: any[] = [];
+    if (documents && documents.length > 0) {
+        const docIds = documents.map(d => d.id);
+        const { data: b } = await supabase.from('document_blocks').select('*').in('document_id', docIds);
+        if (b) blocks = b;
+    }
+
+    // Capture version timestamp
+    const exportData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        project,
+        resources: resources || [],
+        documents: documents || [],
+        blocks: blocks || []
+    };
+
+    return JSON.stringify(exportData, null, 2);
+};
+
+export const importProjectFromJSON = async (jsonString: string, workspaceId: string): Promise<Project> => {
+    let data;
+    try {
+        data = JSON.parse(jsonString);
+    } catch (e) {
+        throw new Error('Invalid JSON format');
+    }
+
+    if (!data.project || !data.documents) {
+        throw new Error('Invalid backup format: missing core data');
+    }
+
+    // 1. Create new project
+    const newProjectName = `${data.project.name} (Restored ${new Date().toLocaleDateString()})`;
+    const project = await createProject(workspaceId, newProjectName);
+    if (!project) throw new Error('Failed to create restored project');
+
+    const projectId = project.id;
+    const oldToNewDocIds: Record<string, string> = {};
+
+    // 2. Restore Resources
+    if (data.resources && data.resources.length > 0) {
+        const resourcesToInsert = data.resources.map((r: any) => ({
+            project_id: projectId,
+            title: r.title,
+            kind: r.kind,
+            meta: r.meta,
+            created_at: r.created_at,
+            file_path: r.file_path, // Note: This might point to non-existent files if moved systems
+            mime_type: r.mime_type,
+            file_size: r.file_size
+        }));
+        await supabase.from('resources').insert(resourcesToInsert);
+    }
+
+    // 3. Restore Documents
+    for (const doc of data.documents) {
+        const { data: newDoc } = await supabase
+            .from('documents')
+            .insert([{
+                project_id: projectId,
+                title: doc.title,
+                category: doc.category,
+                status: doc.status,
+                created_at: doc.created_at
+            }])
+            .select()
+            .single();
+
+        if (newDoc) {
+            oldToNewDocIds[doc.id] = newDoc.id;
+        }
+    }
+
+    // 4. Restore Blocks
+    if (data.blocks && data.blocks.length > 0) {
+        const blocksToInsert = data.blocks
+            .filter((b: any) => oldToNewDocIds[b.document_id]) // Only if parent doc exists
+            .map((b: any) => ({
+                document_id: oldToNewDocIds[b.document_id],
+                content: b.content,
+                title: b.title,
+                order_index: b.order_index,
+                block_type: b.block_type,
+                parent_block_id: null, // Reset hierarchy for now or handle complex recursive mapping (simplified here)
+                tags: b.tags,
+                is_deleted: b.is_deleted
+            }));
+
+        if (blocksToInsert.length > 0) {
+            await supabase.from('document_blocks').insert(blocksToInsert);
+        }
+    }
+
+    return project;
 };

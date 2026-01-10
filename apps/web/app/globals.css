@@ -13,7 +13,8 @@
   --accent: #eeeae4;
   --accent-foreground: #3d3935;
   --primary: #836b4d;
-  --primary-foreground: #faf9f7;
+  --primary-foreground: #2d2a27;
+  /* Darker for better contrast on ochre */
   --ring: #836b4d40;
 }
 
