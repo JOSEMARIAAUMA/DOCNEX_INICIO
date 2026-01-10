@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabase } from '@/lib/supabase/client';
 
 export type AIModelId = 'gemini-2.5-flash' | 'gemini-1.5-pro';
+export type SpecializedProfile = 'legal' | 'architectural' | 'economic' | 'administrative';
 
 export class AIService {
     private genAI: GoogleGenerativeAI;
@@ -61,8 +62,7 @@ Output ONLY the raw JSON string. Do not use markdown blocks.
         projectId: string,
         history: { role: 'user' | 'model', parts: string }[] = []
     ): Promise<string> {
-        // 1. Fetch rough context (Titles of all blocks) to know where to look
-        // For MVP, we pass the "Index" of the project
+        // 1. Fetch rough project context
         const { data: blocks } = await supabase
             .from('document_blocks')
             .select('id, title, tags')
@@ -71,16 +71,48 @@ Output ONLY the raw JSON string. Do not use markdown blocks.
 
         const projectIndex = blocks?.map(b => `- [${b.title}] (ID: ${b.id}) Tags: ${b.tags?.join(', ')}`).join('\n');
 
-        const systemPrompt = `You are DOCNEX AI. You have access to the project index.
-If the user asks specific questions about content, tell them WHICH block IDs to read, or answer based on the index.
-Project Index:
-${projectIndex}
+        // 2. NEW: Fetch Global Regulatory Context
+        const { data: globalResources } = await supabase
+            .from('resources')
+            .select('id, title, meta, theme')
+            .is('project_id', null)
+            .limit(10);
+
+        // 3. NEW: Fetch Library Experiences
+        const { data: experiences } = await supabase
+            .from('library_experiences')
+            .select('resource_id, content, experience_type')
+            .in('resource_id', globalResources?.map(r => r.id) || [])
+            .limit(20);
+
+        const globalRegistryIndex = globalResources?.map(r => {
+            const m = r.meta as any;
+            const resExperiences = experiences?.filter(e => e.resource_id === r.id)
+                .map(e => `   - [EXP: ${e.experience_type}] ${e.content}`).join('\n');
+
+            return `- [${r.title}] (${m?.range || 'General'}) Area: ${m?.area || 'Universal'} (Theme: ${r.theme || 'Unknown'})\n${resExperiences || '   (No experiences recorded yet)'}`;
+        }).join('\n');
+
+        const systemPrompt = `You are DOCNEX AI, an expert architectural and urban planning assistant.
+You have access to the project index AND the Global Regulatory Repository with accumulated experiences.
+
+GLOBAL REGULATORY REPOSITORY (with real-world experiences):
+${globalRegistryIndex || 'No global regulations indexed yet.'}
+
+CLIENT PROJECT INDEX:
+${projectIndex || 'Empty project.'}
+
+INSTRUCTIONS:
+1. If the user asks about regulations, check the Global Repository.
+2. Prioritize "OBLIGATORY" documents over "RECOMMENDATION" or "REFERENCE".
+3. Use the "EXPERIENCES" section to warn the user about known limitations or successes applying these laws.
+4. If specific content is needed, answer based on your internal knowledge of the specific Law (e.g., LISTA, RGLISTA).
 `;
 
         const chat = this.modelFlash.startChat({
             history: [
                 { role: 'user', parts: [{ text: systemPrompt }] },
-                { role: 'model', parts: [{ text: "Understood. I am ready to help with the project." }] },
+                { role: 'model', parts: [{ text: "Understood. I have loaded the project context and the Global Regulatory Repository, including the accumulated professional experiences. How can I assist you?" }] },
                 ...history.map(h => ({ role: h.role, parts: [{ text: h.parts }] }))
             ]
         });
@@ -165,6 +197,39 @@ ${projectIndex}
             schema,
             `ORIGINAL TEXT:\n"${originalText}"\n\nTask: Apply the user instruction to the text.`
         );
+    }
+
+    /**
+     * Theme Detection & Multi-Agent Profiling
+     */
+    async analyzeLibraryResource(text: string): Promise<{
+        theme: string,
+        profile: 'legal' | 'architectural' | 'economic' | 'administrative',
+        key_mandates: string[],
+        suggested_tags: string[]
+    }> {
+        const schema = `{
+            "theme": "string (e.g., Urbanismo, Contratos, etc.)",
+            "profile": "legal | architectural | economic | administrative",
+            "key_mandates": ["string"],
+            "suggested_tags": ["string"]
+        }`;
+
+        return await this.generateObject(
+            text.slice(0, 10000),
+            schema,
+            `Analyze this professional document and determine its specialized profile, theme, and key mandates.`
+        );
+    }
+
+    private getProfilePrompt(profile: SpecializedProfile): string {
+        const prompts: Record<SpecializedProfile, string> = {
+            legal: "You are a specialized Legal Counsel in Urban Law. Focus on mandates, legality, deadlines, and hierarchical consistency.",
+            architectural: "You are a Chief Architect and Urban Planner. Focus on technical parameters, spatial constraints, and design standards.",
+            economic: "You are a Financial Analyst for Real Estate Projects. Focus on viability, costs, investment requirements, and market impacts.",
+            administrative: "You are a Senior Administrative Officer. Focus on procedures, required documentation, and institutional workflows."
+        };
+        return prompts[profile];
     }
 }
 

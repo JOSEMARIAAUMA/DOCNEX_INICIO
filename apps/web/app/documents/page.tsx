@@ -162,10 +162,23 @@ export default function DocumentListPage() {
         }
     };
 
-    const handleDeleteProject = async (id: string) => {
-        if (confirm('¿Eliminar este expediente de forma permanente?')) {
-            await deleteProject(id);
-            loadWorkspaceContent();
+    const handleDeleteProject = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+
+        if (confirm('¿Eliminar este expediente y todos sus documentos de forma permanente? Esta acción no se puede deshacer.')) {
+            setLoading(true);
+            try {
+                await deleteProject(id);
+                // Optimistic update
+                setProjects(prev => prev.filter(p => p.id !== id));
+                await loadWorkspaceContent();
+            } catch (err) {
+                console.error("Error deleting project:", err);
+                alert("Error al eliminar el expediente. Por favor, intente de nuevo.");
+            } finally {
+                setLoading(false);
+            }
         }
     };
 
@@ -464,9 +477,20 @@ export default function DocumentListPage() {
                                                         <div className="w-14 h-14 bg-muted/50 rounded-2xl flex items-center justify-center text-muted-foreground group-hover:bg-primary/5 group-hover:text-primary transition-all">
                                                             <Folder className="w-7 h-7" />
                                                         </div>
-                                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button className="p-2 hover:bg-muted rounded-xl transition-all text-muted-foreground"><Edit2 className="w-4 h-4" /></button>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteProject(p.id); }} className="p-2 hover:bg-red-500/10 rounded-xl transition-all"><Trash2 className="w-4 h-4 text-red-500" /></button>
+                                                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 z-50">
+                                                            <button
+                                                                className="p-2.5 bg-card/80 backdrop-blur-sm border border-border/50 hover:bg-muted rounded-xl transition-all text-muted-foreground shadow-sm"
+                                                                title="Editar expediente"
+                                                            >
+                                                                <Edit2 className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => handleDeleteProject(p.id, e)}
+                                                                className="p-2.5 bg-red-500/10 backdrop-blur-sm border border-red-500/20 hover:bg-red-500 hover:text-white rounded-xl transition-all text-red-500 shadow-sm"
+                                                                title="Eliminar expediente"
+                                                            >
+                                                                <Trash2 className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
                                                     <h3 className="text-xl font-bold text-foreground mb-3 group-hover:text-primary transition-colors line-clamp-1">{p.name}</h3>

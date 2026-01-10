@@ -85,33 +85,39 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
     // Scroll Tracking & Spy
     const scrollContainerRef = React.useRef<HTMLDivElement>(null);
     const [scrollMetrics, setScrollMetrics] = useState({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 });
+    const [visibleBlockRange, setVisibleBlockRange] = useState<{ first?: string, last?: string }>({});
 
     const handleScroll = () => {
         if (scrollContainerRef.current) {
             const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
             setScrollMetrics({ scrollTop, scrollHeight, clientHeight });
 
-            // Scroll Spy: Determine active block based on scroll position
-            // We consider the "active" block to be the one occupying the top third of the screen
-            const spyLine = scrollTop + (clientHeight * 0.3);
+            // Scroll Spy: Determine visible blocks
+            const viewportTop = scrollTop;
+            const viewportBottom = scrollTop + clientHeight;
 
-            let newActiveId = activeBlockId;
+            let firstId: string | undefined;
+            let lastId: string | undefined;
 
             for (const block of blocks) {
                 const el = document.getElementById(`block-${block.id}`);
                 if (el) {
                     const { offsetTop, offsetHeight } = el;
-                    // Block starts before the line and ends after it
-                    if (offsetTop <= spyLine && (offsetTop + offsetHeight) > spyLine) {
-                        newActiveId = String(block.id);
-                        break;
+                    const blockBottom = offsetTop + offsetHeight;
+
+                    // If block is even slightly visible in viewport
+                    if (blockBottom > viewportTop && offsetTop < viewportBottom) {
+                        if (!firstId) firstId = String(block.id);
+                        lastId = String(block.id);
                     }
                 }
             }
 
-            if (newActiveId && newActiveId !== activeBlockId) {
-                setActiveBlockId(String(newActiveId));
+            if (firstId && firstId !== activeBlockId) {
+                setActiveBlockId(firstId);
             }
+
+            setVisibleBlockRange({ first: firstId, last: lastId });
         }
     };
 
@@ -137,26 +143,49 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
                 {/* Header */}
                 <header className="h-14 border-b border-border bg-card flex items-center px-6 justify-between shrink-0 z-20 shadow-sm">
                     <div className="flex items-center gap-4">
-                        <Link href={`/documents/${docRecord.id}`} className="flex items-center gap-2 group text-muted-foreground hover:text-primary transition-all">
-                            <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-                            <span className="text-xs font-bold uppercase tracking-wider">Editor</span>
+                        <Link href="/documents" className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-primary transition-all">
+                            <ChevronLeft className="w-5 h-5" />
                         </Link>
-                        <div className="h-4 w-[1px] bg-border mx-2" />
-                        <div className="flex flex-col">
-                            <h1 className="font-bold text-sm text-foreground leading-tight tracking-tight">
+
+                        <div className="flex items-center gap-2 text-sm">
+                            <Link href="/documents" className="text-muted-foreground/40 hover:text-primary transition-colors font-medium truncate max-w-[100px]">
+                                Espacio
+                            </Link>
+                            <span className="text-muted-foreground/20">/</span>
+                            <Link href="/documents" className="text-muted-foreground/40 hover:text-primary transition-colors font-medium truncate max-w-[150px]">
+                                Proyecto
+                            </Link>
+                            <span className="text-muted-foreground/20">/</span>
+                            <h1 className="font-bold text-sm text-foreground tracking-tight px-2 py-0.5 bg-muted rounded-md border border-border/40">
                                 {docRecord.title}
                             </h1>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                                <Eye className="w-3 h-3 text-primary" />
-                                <span className="text-[10px] text-primary/80 uppercase font-extrabold tracking-widest">Vista Integral de Lectura</span>
-                            </div>
                         </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-xl border border-border/50">
+                        <Link
+                            href={`/documents/${docRecord.id}`}
+                            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all"
+                        >
+                            Editor
+                        </Link>
+                        <Link
+                            href={`/documents/${docRecord.id}?graph=true`}
+                            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all"
+                        >
+                            Grafo
+                        </Link>
+                        <button
+                            className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg bg-background text-primary shadow-sm border border-border"
+                        >
+                            Lectura
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 px-3 py-1 bg-background border border-border rounded-full shadow-sm">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase">{blocks.length} Bloques de Datos</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase">{blocks.length} Bloques</span>
                         </div>
                     </div>
                 </header>
@@ -167,6 +196,7 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
                     <DocumentNavigator
                         blocks={blocks}
                         activeBlockId={activeBlockId}
+                        visibleBlockRange={visibleBlockRange}
                         onBlockClick={handleBlockClick}
                         showMapping={showMapping}
                         showNotes={showNotes}

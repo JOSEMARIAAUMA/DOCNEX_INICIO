@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Document, DocumentBlock, Resource, BlockVersion } from '@docnex/shared';
-import { ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose, PanelLeft, PanelRight, Eye, Wand2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Wand2, Eye, X, MessageSquare, Sparkles, CheckCircle2 } from 'lucide-react';
 import {
     getDocument,
     listActiveBlocks,
@@ -23,7 +23,8 @@ import {
     updateBlock,
     updateBlockTitle,
     resolveBlockComment,
-    listSemanticLinks
+    listSemanticLinks,
+    listDocumentComments
 } from '@/lib/api';
 
 import BlockList from '@/components/blocks/BlockList';
@@ -48,6 +49,7 @@ import { LucideEye } from 'lucide-react';
 export default function DocumentEditorPage() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const documentId = params?.id as string;
 
     const [document, setDocument] = useState<Document | null>(null);
@@ -63,6 +65,7 @@ export default function DocumentEditorPage() {
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [semanticLinks, setSemanticLinks] = useState<any[]>([]);
     const [showGraph, setShowGraph] = useState(false);
+    const [allNotes, setAllNotes] = useState<any[]>([]);
     const [detailNote, setDetailNote] = useState<BlockComment | null>(null);
     const [detailNoteNumber, setDetailNoteNumber] = useState(0);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -104,6 +107,12 @@ export default function DocumentEditorPage() {
 
     const selectedBlock = blocks.find(b => b.id === selectedBlockId) || null;
 
+    useEffect(() => {
+        if (searchParams.get('graph') === 'true') {
+            setShowGraph(true);
+        }
+    }, [searchParams]);
+
     const loadData = useCallback(async () => {
         try {
             const doc = await getDocument(documentId);
@@ -137,6 +146,14 @@ export default function DocumentEditorPage() {
                     setSemanticLinks(links);
                 } catch (linkErr) {
                     console.error('Error loading links:', linkErr);
+                }
+
+                // Fetch All Notes for Graph
+                try {
+                    const notes = await listDocumentComments(documentId);
+                    setAllNotes(notes);
+                } catch (noteErr) {
+                    console.error('Error loading all notes:', noteErr);
                 }
             }
         } catch (err) {
@@ -379,38 +396,58 @@ export default function DocumentEditorPage() {
                     </Link>
 
                     <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground/60 font-medium">{(document as any).project?.workspace?.name}</span>
-                        <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-                        <span className="text-muted-foreground/60 font-medium">{(document as any).project?.name}</span>
-                        <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-                        <h1 className="font-bold text-foreground tracking-tight">
+                        <Link
+                            href="/documents"
+                            className="text-muted-foreground/40 hover:text-primary transition-colors font-medium flex items-center gap-1"
+                        >
+                            <span className="truncate max-w-[100px]">{(document as any).project?.workspace?.name || 'Espacio'}</span>
+                        </Link>
+                        <ChevronRight className="w-3 h-3 text-muted-foreground/20" />
+                        <Link
+                            href="/documents"
+                            className="text-muted-foreground/40 hover:text-primary transition-colors font-medium flex items-center gap-1"
+                            onClick={() => {
+                                localStorage.setItem('lastProjectId', document.project_id);
+                            }}
+                        >
+                            <span className="truncate max-w-[150px]">{(document as any).project?.name || 'Proyecto'}</span>
+                        </Link>
+                        <ChevronRight className="w-3 h-3 text-muted-foreground/20" />
+                        <h1 className="font-bold text-foreground tracking-tight px-2 py-0.5 bg-muted rounded-md border border-border/40">
                             {document.title.replace('ESTRATEGIA: ', '')}
                         </h1>
                     </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-muted/20 p-1 rounded-xl border border-border/50 backdrop-blur-md">
                     <button
-                        onClick={() => setShowGraph(!showGraph)}
-                        className={`text-sm font-medium flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all ${showGraph ? 'bg-slate-800 text-white shadow-inner' : 'text-slate-400 hover:text-slate-100'}`}
+                        onClick={() => setShowGraph(false)}
+                        className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg transition-all ${!showGraph ? 'bg-background text-primary shadow-sm border border-border' : 'text-muted-foreground hover:text-foreground'}`}
                     >
-                        <Eye className="w-4 h-4" />
-                        {showGraph ? 'Volver al Editor' : 'Ver Mapa Cognitivo'}
+                        Editor
+                    </button>
+                    <button
+                        onClick={() => setShowGraph(true)}
+                        className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg transition-all ${showGraph ? 'bg-background text-primary shadow-sm border border-border' : 'text-muted-foreground hover:text-foreground'}`}
+                    >
+                        Grafo
                     </button>
                     <Link
                         href={`/documents/${documentId}/view`}
-                        className="text-sm font-medium text-muted-foreground hover:text-primary flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-muted transition-all"
+                        className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all"
                     >
-                        <LucideEye className="w-4 h-4" />
-                        Vista Completa
+                        Lectura
                     </Link>
+                </div>
+
+                <div className="flex items-center gap-3">
                     <button
                         onClick={() => setShowAIWizard(true)}
-                        className="text-sm font-medium text-primary hover:opacity-90 flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-md hover:bg-primary/20 transition-all font-bold"
+                        className="text-[10px] font-black uppercase tracking-widest text-primary hover:opacity-90 flex items-center gap-1.5 bg-primary/10 px-4 py-1.5 rounded-xl hover:bg-primary/20 transition-all font-bold"
                     >
                         ✨ AI Import
                     </button>
-                    <div className="text-sm text-muted-foreground">
-                        {saving ? 'Guardando...' : 'Guardado'}
+                    <div className="text-[10px] font-bold text-muted-foreground/30 uppercase tracking-tighter">
+                        {saving ? 'Sincronizando...' : 'Nube OK'}
                     </div>
                 </div>
             </div>
@@ -432,6 +469,7 @@ export default function DocumentEditorPage() {
                                 blocks={blocks}
                                 resources={resources}
                                 semanticLinks={semanticLinks}
+                                notes={allNotes}
                                 onNodeClick={(id) => {
                                     const block = blocks.find(b => b.id === id);
                                     if (block) {

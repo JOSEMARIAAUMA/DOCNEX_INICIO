@@ -242,11 +242,11 @@ export const getBlock = async (blockId: string): Promise<DocumentBlock> => {
 
 // Resources
 // Resources
-export const createResource = async (projectId: string, title: string, kind: 'pdf' | 'docx' | 'url' | 'other', meta?: any, documentId?: string) => {
+export const createResource = async (projectId: string | null, title: string, kind: 'pdf' | 'docx' | 'url' | 'other', meta?: any, documentId?: string) => {
     const { data, error } = await supabase
         .from('resources')
         .insert([{
-            project_id: projectId,
+            project_id: projectId, // Can be null for global resources
             document_id: documentId,
             title,
             kind,
@@ -260,16 +260,42 @@ export const createResource = async (projectId: string, title: string, kind: 'pd
     return data;
 };
 
-export const listResources = async (projectId: string, documentId?: string) => {
+export const listResources = async (projectId: string | null, documentId?: string) => {
     let query = supabase
         .from('resources')
         .select('*')
-        .eq('project_id', projectId)
         .order('created_at', { ascending: false });
+
+    if (projectId === null) {
+        // Fetch Global Resources
+        query = query.is('project_id', null);
+    } else {
+        // Fetch Project Resources
+        query = query.eq('project_id', projectId);
+    }
 
     // Enforce Strict Isolation if documentId is provided
     if (documentId) {
         query = query.eq('document_id', documentId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+};
+
+/**
+ * Specifically list all regulators/normative resources in the global repository
+ */
+export const listGlobalRegulatoryResources = async (area?: string) => {
+    let query = supabase
+        .from('resources')
+        .select('*')
+        .is('project_id', null)
+        .order('created_at', { ascending: false });
+
+    if (area) {
+        query = query.contains('meta', { area });
     }
 
     const { data, error } = await query;
@@ -339,6 +365,14 @@ export const updateResource = async (id: string, updates: Partial<Resource>): Pr
     return data;
 };
 
+export const updateResourceTheme = async (id: string, theme: string): Promise<void> => {
+    const { error } = await supabase
+        .from('resources')
+        .update({ theme, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    if (error) throw error;
+};
+
 export const deleteResource = async (id: string): Promise<void> => {
     const { error } = await supabase
         .from('resources')
@@ -400,6 +434,56 @@ export const listDeletedBlocks = async (documentId: string): Promise<DocumentBlo
         .order('updated_at', { ascending: false });
     if (error) throw error;
     return data || [];
+};
+
+// ============================================================
+// SPRINT 4: Library Experiences & Learning
+// ============================================================
+
+export type ExperienceType = 'limitation' | 'success' | 'contradiction' | 'tip' | 'critical_note';
+
+export interface LibraryExperience {
+    id: string;
+    resource_id: string;
+    project_id?: string;
+    block_id?: string;
+    experience_type: ExperienceType;
+    content: string;
+    created_at: string;
+}
+
+export const listExperiencesForResource = async (resourceId: string): Promise<LibraryExperience[]> => {
+    const { data, error } = await supabase
+        .from('library_experiences')
+        .select('*')
+        .eq('resource_id', resourceId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+};
+
+export const createExperience = async (
+    resourceId: string,
+    content: string,
+    type: ExperienceType,
+    projectId?: string,
+    blockId?: string
+): Promise<LibraryExperience | null> => {
+    const { data, error } = await supabase
+        .from('library_experiences')
+        .insert([{
+            resource_id: resourceId,
+            content,
+            experience_type: type,
+            project_id: projectId,
+            block_id: blockId
+        }])
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
 };
 
 /**
@@ -708,6 +792,30 @@ export const listBlockComments = async (blockId: string): Promise<BlockComment[]
         .select('*')
         .eq('block_id', blockId)
         .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+/**
+ * List all comments/notes for a whole document by joining through blocks
+ */
+export const listDocumentComments = async (documentId: string): Promise<BlockComment[]> => {
+    // We fetch blocks first to get their IDs, or use a join if possible (client-side join here for simplicity or better RPC)
+    const { data: blocks } = await supabase
+        .from('document_blocks')
+        .select('id')
+        .eq('document_id', documentId)
+        .eq('is_deleted', false);
+
+    if (!blocks || blocks.length === 0) return [];
+
+    const blockIds = blocks.map(b => b.id);
+    const { data, error } = await supabase
+        .from('block_comments')
+        .select('*')
+        .in('block_id', blockIds)
+        .order('created_at', { ascending: false });
+
     if (error) throw error;
     return data || [];
 };

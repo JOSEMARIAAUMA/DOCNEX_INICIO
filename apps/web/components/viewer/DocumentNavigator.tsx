@@ -14,6 +14,7 @@ interface DocumentNavigatorProps {
     showSupport: boolean;
     showVersions: boolean;
     scrollMetrics?: { scrollTop: number; scrollHeight: number; clientHeight: number };
+    visibleBlockRange?: { first?: string; last?: string };
     onNavigatorScroll?: (percentage: number) => void;
 }
 
@@ -28,6 +29,7 @@ export function DocumentNavigator({
     showSupport,
     showVersions,
     scrollMetrics,
+    visibleBlockRange,
     onNavigatorScroll
 }: DocumentNavigatorProps) {
     const [width, setWidth] = useState(240);
@@ -62,23 +64,25 @@ export function DocumentNavigator({
     const getLensMetrics = () => {
         if (!scrollMetrics || !listRef.current) return { top: 0, height: 0, display: 'none' };
 
+        // If we have visible range, we can be much more accurate
+        if (visibleBlockRange?.first && visibleBlockRange?.last) {
+            const firstEl = listRef.current.querySelector(`[data-block-id="${visibleBlockRange.first}"]`) as HTMLElement;
+            const lastEl = listRef.current.querySelector(`[data-block-id="${visibleBlockRange.last}"]`) as HTMLElement;
+
+            if (firstEl && lastEl) {
+                const top = firstEl.offsetTop;
+                const height = (lastEl.offsetTop + lastEl.offsetHeight) - top;
+                return { top, height, display: 'block' };
+            }
+        }
+
+        // Fallback to linear calculation
         const { scrollTop, scrollHeight, clientHeight } = scrollMetrics;
         const navHeight = listRef.current.scrollHeight;
-
-        // Calculate Proportions
-        // Use a small buffer to avoid division by zero
         const scrollableDistance = Math.max(1, scrollHeight - clientHeight);
-        const percentage = scrollTop / scrollableDistance;
-
-        // visibleRatio is how much of the content is visible in the viewport
+        const percentage = Math.min(1, Math.max(0, scrollTop / scrollableDistance));
         const visibleRatio = clientHeight / scrollHeight;
-
-        // Lens Physical Dimensions
-        // Use a minimum height to ensure it's always grabable
-        // We also want to cap it to the navigator height
-        const lensHeight = Math.max(30, Math.min(navHeight, navHeight * visibleRatio));
-
-        // The track logic: The lens travels from Top=0 to Top=(NavHeight - LensHeight)
+        const lensHeight = Math.max(40, Math.min(navHeight, navHeight * visibleRatio));
         const maxLensTop = Math.max(0, navHeight - lensHeight);
         const lensTop = percentage * maxLensTop;
 
@@ -295,13 +299,8 @@ export function DocumentNavigator({
                     return (
                         <div
                             key={block.id}
+                            data-block-id={block.id}
                             // We allow click bubbling to handleTrackClick for navigation
-                            // But we ALSO want to set the active block if desired? 
-                            // Actually user says "Click on browser changes view". 
-                            // If I click a block, I probably want to jump THERE. 
-                            // handleTrackClick does exactly that based on Y position.
-                            // So we don't need a specific handler here unless we want to "Snap".
-                            // Let's rely on handleTrackClick for the smooth "Map" feel.
                             className={`
                                 group w-full relative cursor-pointer transition-all duration-300 rounded-xl border-2
                                 ${isSubBlock ? 'ml-4 w-[calc(100%-16px)]' : ''}

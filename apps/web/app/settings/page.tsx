@@ -2,11 +2,12 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/UiCard";
 import { Button } from "@/components/ui/UiButton";
-import { FileText, Settings as SettingsIcon, Shield, Users, Sun, Moon, Monitor } from "lucide-react";
+import { FileText, Settings as SettingsIcon, Shield, Users, Sun, Moon, Monitor, Beaker } from "lucide-react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import AIContextConfig from "@/components/settings/AIContextConfig";
+import ComplexityDemoGenerator from "@/components/settings/ComplexityDemoGenerator";
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -55,6 +56,22 @@ export default function SettingsPage() {
                                     </button>
                                 ))}
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Developer / Demo Lab */}
+                    <Card className="md:col-span-2 lg:col-span-3 bg-amber-500/5 border-amber-500/10 shadow-sm border-dashed">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="text-xl flex items-center gap-2 text-amber-600 dark:text-amber-500">
+                                <Beaker className="w-5 h-5" />
+                                Laboratorio de Pruebas
+                            </CardTitle>
+                            <CardDescription className="text-amber-600/60 dark:text-amber-500/50">
+                                Herramientas de aceleración para desarrolladores y visualización de capacidades avanzadas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ComplexityDemoGenerator />
                         </CardContent>
                     </Card>
 

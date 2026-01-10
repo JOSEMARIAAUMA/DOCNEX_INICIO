@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Home, Folder, Settings, Command } from 'lucide-react';
+import { Home, Folder, Settings, Command, Library } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -85,6 +85,7 @@ export function Sidebar() {
             <nav className="flex flex-col gap-1 space-y-1">
                 <NavItem icon={Home} label="Inicio" href="/" isExpanded={isExpanded && !isInDocuments} />
                 <NavItem icon={Folder} label="Documentos" href="/documents" isExpanded={isExpanded && !isInDocuments} />
+                <NavItem icon={Library} label="Librería" href="/library" isExpanded={isExpanded && !isInDocuments} />
             </nav>
 
             <div className="mt-auto">
