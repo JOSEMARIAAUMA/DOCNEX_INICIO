@@ -1,0 +1,21 @@
+                                    />
+                                </>
+                            )}
+                        </div>
+
+                        {/* Right Toggle Button (Hidden when expanded) */}
+                        {rightPanelCollapsed && (
+                            <button
+                                onClick={() => setRightPanelCollapsed(false)}
+                                className="absolute right-0 top-1/2 -translate-y-1/2 z-40 bg-card border border-border border-r-0 rounded-l-md p-1 shadow-sm hover:text-primary transition-all"
+                                title="Expandir Apoyo"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                        )}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}

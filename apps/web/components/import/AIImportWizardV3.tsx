@@ -14,14 +14,14 @@ interface ImportBlock {
     children?: ImportBlock[];
 }
 
-interface AIImportWizardProps {
+interface AIImportWizardV3Props {
     documentId?: string; // If adding to existing
     projectId: string;
     onClose: () => void;
     onSuccess: () => void;
 }
 
-export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AIImportWizardProps) {
+export function AIImportWizardV3({ documentId, projectId, onClose, onSuccess }: AIImportWizardV3Props) {
     const { context } = useGlobalContext();
     const [step, setStep] = useState<'upload' | 'analysis' | 'review'>('upload');
     const [rawText, setRawText] = useState('');
@@ -41,7 +41,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
             const result = await mammoth.convertToHtml({ arrayBuffer });
             setRawText(result.value);
         } else {
-            alert('Formato no soportado en esta versión (solo .txt y .docx)');
+            alert('Formato no soportado en esta demo (solo .txt y .docx)');
         }
     };
 
@@ -112,7 +112,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
     };
 
     const handleImport = async () => {
-        if (!projectId) return;
+        if (!documentId && !projectId) return;
         setIsAnalyzing(true);
         try {
             // 1. Learning Loop
@@ -124,7 +124,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
             // 2. Atomic Batch Import (Blocks + Semantic Links)
             const result = await batchImportBlocks(
                 projectId,
-                documentId || '',
+                documentId || '', // In a real app we'd create the doc first if missing
                 blocks.map(b => ({ title: b.title, content: b.content, target: b.type as any })),
                 aiLinks
             );
@@ -148,7 +148,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                 <div className="h-16 border-b border-border flex items-center justify-between px-6 shrink-0 bg-muted/20">
                     <h2 className="text-xl font-bold flex items-center gap-2">
                         <Wand2 className="w-5 h-5 text-purple-500" />
-                        AI Cognitive Import v4.0 (GraphRAG Ready)
+                        Importador Inteligente v3.0
                     </h2>
                     <button onClick={onClose} className="hover:bg-muted p-2 rounded-full"><Trash className="w-5 h-5" /></button>
                 </div>
@@ -157,7 +157,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                 <div className="flex-1 flex overflow-hidden">
                     {/* Left: Source */}
                     <div className="flex-1 border-r border-border p-6 flex flex-col gap-4 bg-muted/5">
-                        <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-widest">Documento Fuente</h3>
+                        <h3 className="font-bold text-sm text-muted-foreground uppercase">Documento Fuente</h3>
                         {step === 'upload' ? (
                             <div className="flex-1 border-2 border-dashed border-border rounded-2xl flex flex-col items-center justify-center gap-4 text-muted-foreground hover:bg-muted/50 transition-colors cursor-pointer"
                                 onDragOver={e => e.preventDefault()}
@@ -170,18 +170,15 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                 <Upload className="w-12 h-12 opacity-50" />
                                 <div className="text-center">
                                     <p className="font-bold">Arrastra un archivo aquí</p>
-                                    <p className="text-sm">Soporte nativo para .docx y .txt</p>
+                                    <p className="text-sm">.dox, .txt</p>
                                 </div>
-                                <input type="file" onChange={e => {
-                                    const file = e.target.files?.[0];
-                                    if (file) processFile(file);
-                                }} className="hidden" id="file-upload" />
-                                <label htmlFor="file-upload" className="bg-primary text-primary-foreground px-6 py-2 rounded-xl cursor-pointer shadow-lg hover:scale-105 transition-transform">Seleccionar Archivo</label>
+                                <input type="file" onChange={e => e.target.files?.[0] && processFile(e.target.files[0])} className="hidden" id="file-upload" />
+                                <label htmlFor="file-upload" className="bg-primary text-primary-foreground px-4 py-2 rounded-lg cursor-pointer">Seleccionar Archivo</label>
                             </div>
                         ) : (
-                            <div className="flex-1 bg-card rounded-2xl border border-border p-6 overflow-y-auto shadow-inner">
+                            <div className="flex-1 bg-card rounded-2xl border border-border p-4 overflow-y-auto">
                                 <div className="prose prose-sm max-w-none dark:prose-invert">
-                                    {rawText.startsWith('<') ? <div dangerouslySetInnerHTML={{ __html: rawText }} /> : <pre className="whitespace-pre-wrap font-sans text-sm">{rawText}</pre>}
+                                    {rawText.startsWith('<') ? <div dangerouslySetInnerHTML={{ __html: rawText }} /> : <pre className="whitespace-pre-wrap font-sans">{rawText}</pre>}
                                 </div>
                             </div>
                         )}
@@ -190,51 +187,34 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                             <button
                                 onClick={handleAnalyze}
                                 disabled={isAnalyzing}
-                                className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-primary/90 transition-all"
+                                className="w-full py-4 bg-primary text-primary-foreground rounded-xl font-bold shadow-lg flex items-center justify-center gap-2"
                             >
                                 {isAnalyzing ? <Wand2 className="w-5 h-5 animate-spin" /> : <Split className="w-5 h-5" />}
-                                {isAnalyzing ? 'Orquestando Agentes...' : 'Analizar Estructura Cognitiva'}
+                                {isAnalyzing ? 'Analizando Estructura...' : 'Analizar y Dividir'}
                             </button>
                         )}
                     </div>
 
                     {/* Right: Structure */}
                     <div className="flex-1 p-6 flex flex-col gap-4 bg-background">
-                        <h3 className="font-bold text-sm text-muted-foreground uppercase tracking-widest">Arquitectura Propuesta</h3>
+                        <h3 className="font-bold text-sm text-muted-foreground uppercase">Estructura Detectada</h3>
                         {step === 'review' ? (
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                                 {renderBlockTree(blocks)}
-                                {aiLinks.length > 0 && (
-                                    <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-xl">
-                                        <h4 className="text-xs font-bold text-primary uppercase mb-2">Relaciones Semánticas Detectadas ({aiLinks.length})</h4>
-                                        <div className="space-y-1">
-                                            {aiLinks.slice(0, 3).map((link, i) => (
-                                                <div key={i} className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                                    <ChevronRight className="w-3 h-3" />
-                                                    {blocks[link.source_index]?.title} {'->'} {blocks[link.target_index]?.title}
-                                                </div>
-                                            ))}
-                                            {aiLinks.length > 3 && <div className="text-[10px] italic">+ {aiLinks.length - 3} relaciones más</div>}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground/30 italic gap-4">
-                                <div className="w-20 h-20 rounded-full border-2 border-dashed border-muted-foreground/20 flex items-center justify-center">
-                                    <Smartphone className="w-8 h-8 opacity-20" />
-                                </div>
-                                <p className="text-sm">El mapa cognitivo aparecerá tras el análisis</p>
+                            <div className="flex-1 flex items-center justify-center text-muted-foreground/30 italic">
+                                La estructura aparecerá aquí...
                             </div>
                         )}
 
                         <button
                             onClick={handleImport}
-                            disabled={isAnalyzing || step !== 'review'}
-                            className="w-full py-4 bg-green-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-green-700 disabled:opacity-50 transition-all"
+                            disabled={isAnalyzing}
+                            className="w-full py-4 bg-green-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 hover:bg-green-700 disabled:opacity-50"
                         >
                             {isAnalyzing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <CheckCircle className="w-5 h-5" />}
-                            {isAnalyzing ? 'Sincronizando Aprendizaje...' : `Confirmar y Construir Grafo (${blocks.length} Nodos)`}
+                            {isAnalyzing ? 'Sincronizando Aprendizaje...' : `Confirmar Importación (${blocks.length} Bloques)`}
                         </button>
                     </div>
                 </div>

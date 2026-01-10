@@ -1,6 +1,7 @@
 'use client';
 
-import { BubbleMenu, Editor } from '@tiptap/react';
+import { Editor } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
 import { Sparkles, Zap, Search, FileJson } from 'lucide-react';
 import { Button } from '@/components/ui/UiButton';
 
@@ -30,7 +31,7 @@ export default function FloatingContextToolbar({ editor }: FloatingContextToolba
     return (
         <BubbleMenu
             editor={editor}
-            tippyOptions={{ duration: 100 }}
+            options={{}}
             className="flex items-center gap-1 p-1.5 bg-card border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in duration-200"
         >
             <div className="flex items-center gap-1 border-r border-border pr-1 mr-1">

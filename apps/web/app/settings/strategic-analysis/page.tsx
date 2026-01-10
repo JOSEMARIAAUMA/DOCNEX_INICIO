@@ -173,8 +173,144 @@ Adoptar el plan de "Operativa Primero".
 ¿Procedemos a implementar la **Fase A (Infraestructura de Estados y Recursos)** tal como define el plan?
 `;
 
+const STRATEGIC_ANALYSIS_V3 = `# Informe Estratégico: DOCNEX AI
+## *De la Edición de Texto a la Arquitectura Cognitiva Documental*
+
+### 1. Identidad y Visión: ¿Qué es DOCNEX AI?
+DOCNEX AI no es un simple editor de texto ni un "wrapper" de IA. Es una **Plataforma de Arquitectura Documental** diseñada para profesionales que gestionan información de alta complejidad (legal, técnica, arquitectónica, ingeniería).
+
+**La Misión:** Transformar documentos "planos" y caóticos en **estructuras de datos jerárquicas y semánticas**, donde cada párrafo tiene un origen (linaje), una función y una conexión con el ecosistema de conocimiento del proyecto.
+
+---
+
+### 2. Objetivos Estratégicos y Competitividad
+DOCNEX busca resolver la "Carga Cognitiva" que los modelos de chat tradicionales (ChatGPT/Gemini) no pueden manejar por sí solos debido a sus interfaces lineales.
+
+#### Objetivos para ser Competitiva:
+*   **Domar el Caos (Anti-Maraña):** Sustituir los grafos de conocimiento desordenados por una estructura de **"Árbol Sólido"** (Tronco de Capítulos + Ramas de Evidencia/Control).
+*   **Trazabilidad Total (Linaje):** Garantizar que cada decisión o párrafo generado por la IA pueda rastrearse hasta su fuente original (PDF, normativa, borrador previo).
+*   **Interacción de "Cero Clics":** Minimizar la fricción del usuario mediante herramientas contextuales que aparecen solo cuando se necesitan.
+
+---
+
+### 3. Pilares de Valor Diferenciado
+
+#### A. Arquitectura por Capas (Layering)
+Inspirado por el software CAD/BIM, DOCNEX trata el documento como una superposición de estratos:
+1.  **Capa Base:** El contenido textual puro.
+2.  **Capa Estructural:** La jerarquía de bloques y capítulos.
+3.  **Capa Semántica:** Etiquetas, entidades y conexiones lógicas detectadas por IA.
+4.  **Capa de Revisión (Papel Cebolla):** Notas, propuestas de cambio y trazabilidad temporal.
+
+#### B. El "ADN" de la IA y Perfiles Personalizados (AI Gems)
+A diferencia de otros editores, DOCNEX permite definir el **Contexto Global de la IA**:
+*   **DNA Configurator:** Define el Rol, Tono, Objetivo e Instrucciones Críticas que rigen toda la sesión.
+*   **AI Profiles Management:** Sistema de "Gemas" para guardar y alternar entre distintas personalidades de experto (ej. "Auditor Legal", "Redactor Técnico", "Analista de Contradicciones").
+
+#### C. Inteligencia Ejecutable (Executable Notas)
+No solo sugiere cambios; los **ejecuta**. Mediante el sistema de *Executable Notes*, la IA propone una mejora o corrección, muestra un *diff* visual y permite al usuario aplicar el cambio directamente al editor con un solo clic.
+
+#### D. Ingesta Inteligente (Smart Import Wizard v2)
+Un motor de importación que utiliza IA para "entender" la estructura de PDFs complejos, dividiéndolos automáticamente en bloques lógicos y clasificándolos por categorías (Evidencia, Datos, Referencia).
+
+---
+
+### 4. Capacidad Tecnológica Actualizada (Resumen de Features)
+
+| Feature | Descripción | Propósito Estratégico |
+| :--- | :--- | :--- |
+| **Editor Dinámico Tiptap** | Basado en bloques con extensiones personalizadas. | Flexibilidad total en la manipulación de datos. |
+| **Split-View Workspace** | Panel lateral para comparativas y visualización de recursos. | Reducción de carga cognitiva al evitar el cambio de pestañas. |
+| **Snapshot Protection** | Guardado automático y preventivo antes de operaciones críticas. | Integridad de datos y "Viaje en el tiempo" documental. |
+| **Knowledge Graph** | Visualización de conexiones semánticas entre documentos. | Descubrimiento de relaciones no evidentes en textos largos. |
+| **Cajas (Snapshots Sellados)** | Gestión procidimental de versiones. | Control de estados en la tramitación de documentos oficiales. |
+
+---
+
+### 5. ¿Por qué es un valor superior para Gemini Pro?
+Para una IA como **Gemini Pro**, DOCNEX es el "exoesqueleto" perfecto. Mientras Gemini aporta el razonamiento superior, DOCNEX le proporciona:
+1.  **Contexto Ultra-Específico:** No recibe texto suelto, sino bloques con metadata rica.
+2.  **Instrucciones de ADN:** Un marco ético y técnico (System Prompts) persistente y personalizable.
+3.  **Herramientas de Salida Estructurada:** Esquemas de validación (Zod) que garantizan que las respuestas de la IA sean operativas y no solo conversacionales.
+
+---
+
+### 6. Conclusión para Gemini
+> *"DOCNEX no es una herramienta para escribir más rápido; es un sistema operativo para **pensar y construir mejor** documentos complejos. Tu objetivo como IA dentro de este ecosistema es actuar como el **Arquitecto de Información**, asegurando que cada bloque cumpla con el ADN definido y mantenga la coherencia semántica con el resto del proyecto."*
+`;
+
+
+
+const STRATEGIC_ANALYSIS_V4 = `
+<div class="p-8 bg-gradient-to-br from-indigo-900/40 to-purple-900/40 rounded-3xl border border-white/10 backdrop-blur-xl shadow-2xl overflow-hidden">
+  <div class="flex items-center gap-4 mb-8">
+    <div class="w-16 h-16 rounded-2xl bg-indigo-500/20 flex items-center justify-center border border-indigo-500/30">
+      <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+    </div>
+    <div>
+      <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 uppercase tracking-tighter">Plan Maestro: IA Multiagente</h1>
+      <p class="text-indigo-200/60 font-medium">Revolución Cognitiva en DOCNEX</p>
+    </div>
+  </div>
+
+  <div class="space-y-8">
+    <section class="p-6 bg-white/5 rounded-2xl border border-white/10">
+      <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span class="w-2 h-6 bg-indigo-500 rounded-full"></span> 1. Visión: El Segundo Cerebro
+      </h2>
+      <p class="text-indigo-100/80 leading-relaxed">
+        Eliminamos la <strong>falta de estado</strong>. DOCNEX dejará de ser una herramienta reactiva para convertirse en un <strong>Socio Cognitivo</strong> con Memoria Episódica y Semántica. La IA ya no preguntará "¿Qué quieres hacer?", sino que dirá "He preparado esto basándome en tu estilo anterior".
+      </p>
+    </section>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="p-4 bg-indigo-500/10 rounded-xl border border-indigo-500/20">
+        <h3 class="font-bold text-indigo-300 mb-2">Memoria Híbrida</h3>
+        <p class="text-xs text-indigo-200/60">Jerarquía MemGPT: Sensorial, Trabajo y Central (El ADN del Autor).</p>
+      </div>
+      <div class="p-4 bg-purple-500/10 rounded-xl border border-purple-500/20">
+        <h3 class="font-bold text-purple-300 mb-2">HITL Granular</h3>
+        <p class="text-xs text-purple-200/60">Logging de distancia de edición y análisis de ráfagas para aprender sin preguntar.</p>
+      </div>
+      <div class="p-4 bg-pink-500/10 rounded-xl border border-pink-500/20">
+        <h3 class="font-bold text-pink-300 mb-2">Multi-Agente</h3>
+        <p class="text-xs text-pink-200/60">Orquestación de Bibliotecarios, Investigadores y Críticos especializados.</p>
+      </div>
+    </div>
+
+    <section class="p-6 bg-gradient-to-r from-indigo-500/10 to-transparent rounded-2xl border border-white/5">
+      <h2 class="text-xl font-bold text-white mb-4">Roadmap de Ejecución</h2>
+      <ul class="space-y-4">
+        <li class="flex items-start gap-3">
+          <div class="mt-1.5 w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]"></div>
+          <div>
+            <span class="block font-bold text-indigo-200">Fase 1: Observabilidad Total</span>
+            <span class="text-sm text-indigo-200/50">Implementación de Event Sourcing y Cómputo de Feedback Implícito.</span>
+          </div>
+        </li>
+        <li class="flex items-start gap-3">
+          <div class="mt-1.5 w-2 h-2 rounded-full bg-purple-400"></div>
+          <div>
+            <span class="block font-bold text-purple-200">Fase 2: Del RAG al GraphRAG</span>
+            <span class="text-sm text-purple-200/50">Representación del documento como un Grafo de Conocimiento Semántico.</span>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <div class="pt-4 border-t border-white/10 flex justify-between items-center">
+      <span class="text-[10px] text-white/20 font-mono">DOCNEX_CORE_BETA v2.5</span>
+      <span class="px-3 py-1 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full border border-green-500/30 tracking-widest uppercase">Listo para Ejecución</span>
+    </div>
+  </div>
+</div>
+<br/>
+<p><em>Este plan ha sido generado por Antigravity tras el análisis profundo de arquitecturas cognitivas adaptativas.</em></p>
+`;
+
 
 export default function StrategicAnalysisPage() {
+
     const router = useRouter();
     const [documents, setDocuments] = useState<Document[]>([]);
     const [loading, setLoading] = useState(true);
@@ -265,7 +401,32 @@ export default function StrategicAnalysisPage() {
                 console.error("Error creating New Vision:", err);
             }
 
+            // 3. Updated Strategic Briefing (Gemini Pro)
+            try {
+                const doc3 = await createDocument(projectId, 'ESTRATEGIA: Informe Gemini Pro (Actualizado)', 'main');
+                if (doc3) {
+                    console.log("Doc 3 created, adding block...");
+                    const b3 = await createBlock(doc3.id, STRATEGIC_ANALYSIS_V3, 0, 'Contenido Completo');
+                    console.log("Block 3 created result:", b3);
+                }
+            } catch (err) {
+                console.error("Error creating Gemini Pro Briefing:", err);
+            }
+
+
+            // 4. Cognitive AI Plan
+            try {
+                const doc4 = await createDocument(projectId, 'ESTRATEGIA: Plan Maestro IA (Revolución)', 'main');
+                if (doc4) {
+                    console.log("Doc 4 created, adding block...");
+                    await createBlock(doc4.id, STRATEGIC_ANALYSIS_V4, 0, 'Contenido Completo');
+                }
+            } catch (err) {
+                console.error("Error creating Multi-Agent Plan:", err);
+            }
+
             await loadDocuments();
+
         } catch (e) {
             console.error("Seeding error:", e);
             // Don't alert global error to avoid scaring user if partial success

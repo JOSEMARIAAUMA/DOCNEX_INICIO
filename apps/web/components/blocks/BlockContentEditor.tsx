@@ -5,6 +5,7 @@ import { DocumentBlock, Resource, BlockResourceLink, BlockVersion, SemanticLink 
 import { updateBlock, updateBlockTitle, listBlockLinks, removeLink, createResourceExtract, createLink, createBlockComment, listBlockComments, listSemanticLinksByBlock } from '@/lib/api';
 import { Network, Tag, Save, ChevronDown, ChevronUp, Split, Image as ImageIcon, Link as LinkIcon, Trash2, Maximize2, Minimize2, Copy, History, PlusSquare, X } from 'lucide-react';
 import { SemanticLinkOverlay } from '../viewer/SemanticLinkOverlay';
+import { AIFloatingMenu } from '../editor/AIFloatingMenu';
 import { processAutoLinks } from '@/lib/ai/semantic-engine';
 import { supabase } from '@/lib/supabase/client';
 import type { BlockComment } from '@docnex/shared';
@@ -640,6 +641,9 @@ export default function BlockContentEditor({
                 onComment={handleComment}
                 onSplit={handleLocalSplit}
             />
+
+            {/* AI Floating Menu - Attached to Active Editor */}
+            {activeEditor && <AIFloatingMenu editor={activeEditor} blockId={block.id} />}
 
             {/* 3. MAIN EDITOR AREA SPLIT */}
             <div className={`flex-1 overflow-hidden flex ${comparingItem ? 'flex-col' : ''}`}>

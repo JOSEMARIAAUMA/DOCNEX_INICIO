@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { BlockComment, BlockCommentReply } from '@docnex/shared';
 import { updateBlockComment, listCommentReplies, addCommentReply } from '@/lib/api';
-import { X, Send, Paperclip, Link as LinkIcon, MessageSquare, Clock, CheckCircle2 } from 'lucide-react';
+import { executeNoteInstructionWithAI } from '@/actions/ai';
+import { useGlobalContext } from '@/hooks/useGlobalContext';
+import { X, Send, Paperclip, Link as LinkIcon, MessageSquare, Clock, CheckCircle2, Play, Sparkles, Split } from 'lucide-react';
 
 interface NoteDetailsPanelProps {
     isOpen: boolean;
@@ -11,9 +13,11 @@ interface NoteDetailsPanelProps {
     noteNumber: number;
     onClose: () => void;
     onUpdate: () => void;
+    onApplyDiff?: (noteId: string, newText: string) => void;
 }
 
-export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, onUpdate }: NoteDetailsPanelProps) {
+export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, onUpdate, onApplyDiff }: NoteDetailsPanelProps) {
+    const { context } = useGlobalContext();
     const [content, setContent] = useState('');
     const [noteType, setNoteType] = useState<'review' | 'ai_instruction'>('review');
     const [links, setLinks] = useState<string>('');
@@ -22,15 +26,29 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
     const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState<'content' | 'followup' | 'attachments'>('content');
 
+    // AI Execution State
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [aiProposal, setAiProposal] = useState<{ diffHtml: string, newText: string, thoughtProcess: string } | null>(null);
+
     useEffect(() => {
         if (note && isOpen) {
             setContent(note.content);
             setNoteType(note.comment_type);
             const metaLinks = (note.meta?.links as string[]) || [];
             setLinks(metaLinks.join('\n'));
+
+            // Restore proposal if saved in meta
+            if (note.meta?.ai_proposal) {
+                setAiProposal(note.meta.ai_proposal as any);
+            } else {
+                setAiProposal(null);
+            }
+
             loadReplies();
         }
     }, [note, isOpen]);
+
+
 
     const loadReplies = async () => {
         if (!note) return;
@@ -50,7 +68,7 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
             await updateBlockComment(note.id, {
                 content,
                 comment_type: noteType,
-                meta: { ...(note.meta || {}), links: linkList }
+                meta: { ...(note.meta || {}), links: linkList, ai_proposal: aiProposal }
             });
             onUpdate();
         } catch (err) {
@@ -167,6 +185,78 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
                                 </div>
                             </div>
                         )}
+
+                        {/* Executable Note Section */}
+                        {noteType === 'ai_instruction' && note?.text_selection && (
+                            <div className="space-y-3 pt-4 border-t border-border">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                                        <Sparkles className="w-3.5 h-3.5" /> Ejecución Inteligente
+                                    </label>
+                                    <button
+                                        onClick={async () => {
+                                            if (!note.text_selection) return;
+                                            setIsExecuting(true);
+                                            try {
+                                                const result = await executeNoteInstructionWithAI(note.text_selection, content, context);
+                                                if (result.success && result.result) {
+                                                    setAiProposal(result.result);
+                                                    // Auto-save the proposal to meta
+                                                    await updateBlockComment(note.id, {
+                                                        meta: { ...(note.meta || {}), ai_proposal: result.result }
+                                                    });
+                                                } else {
+                                                    console.error(result.error);
+                                                    alert('Error ejecutando: ' + (result.error || 'Desconocido'));
+                                                }
+                                            } catch (e) {
+                                                console.error(e);
+                                                alert('Error ejecutando instrucción');
+                                            } finally {
+                                                setIsExecuting(false);
+                                            }
+                                        }}
+                                        disabled={isExecuting || !content.trim()}
+                                        className="text-[10px] bg-primary/10 hover:bg-primary/20 text-primary px-2 py-1 rounded-md font-bold transition-colors flex items-center gap-1"
+                                    >
+                                        {isExecuting ? <Sparkles className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                                        {aiProposal ? 'Regenerar' : 'Ejecutar'}
+                                    </button>
+                                </div>
+
+                                {aiProposal && (
+                                    <div className="bg-muted/30 border border-border rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+                                        <div className="bg-muted/50 p-2 border-b border-border flex items-center justify-between">
+                                            <span className="text-[10px] font-bold text-muted-foreground uppercase">Propuesta</span>
+                                            <button
+                                                onClick={() => {
+                                                    // Pass to parent handler
+                                                    if (onApplyDiff) {
+                                                        onApplyDiff(note.id, aiProposal.newText);
+                                                        onClose();
+                                                    } else {
+                                                        alert('Función de aplicación pendiente de conectar con el editor.');
+                                                    }
+                                                }}
+                                                className="text-[10px] bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded font-bold flex items-center gap-1"
+                                            >
+                                                <CheckCircle2 className="w-3 h-3" /> Aplicar
+                                            </button>
+                                        </div>
+                                        <div className="p-3 text-xs font-mono space-y-2">
+                                            <p className="text-muted-foreground italic border-l-2 border-border pl-2">
+                                                "{aiProposal.thoughtProcess}"
+                                            </p>
+                                            {/* Warning: dangerouslySetInnerHTML is risky but necessary for diffs. Sanitization needed in prod. */}
+                                            <div
+                                                className="p-2 bg-background rounded border border-border"
+                                                dangerouslySetInnerHTML={{ __html: aiProposal.diffHtml }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -276,6 +366,6 @@ export default function NoteDetailsPanel({ isOpen, note, noteNumber, onClose, on
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }
