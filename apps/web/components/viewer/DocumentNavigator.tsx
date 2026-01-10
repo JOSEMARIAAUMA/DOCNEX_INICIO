@@ -66,24 +66,43 @@ export function DocumentNavigator({
         const navHeight = listRef.current.scrollHeight;
 
         // Calculate Proportions
-        const scrollableDistance = scrollHeight - clientHeight;
-        if (scrollableDistance <= 0) return { top: 0, height: 0, display: 'none' };
-
+        // Use a small buffer to avoid division by zero
+        const scrollableDistance = Math.max(1, scrollHeight - clientHeight);
         const percentage = scrollTop / scrollableDistance;
-        const visibleRatio = Math.min(1, clientHeight / scrollHeight);
+
+        // visibleRatio is how much of the content is visible in the viewport
+        const visibleRatio = clientHeight / scrollHeight;
 
         // Lens Physical Dimensions
-        // We use a minimum height (e.g. 40px) ensuring it's always grab-able
-        const lensHeight = Math.max(40, navHeight * visibleRatio);
+        // Use a minimum height to ensure it's always grabable
+        // We also want to cap it to the navigator height
+        const lensHeight = Math.max(30, Math.min(navHeight, navHeight * visibleRatio));
 
         // The track logic: The lens travels from Top=0 to Top=(NavHeight - LensHeight)
-        const maxLensTop = navHeight - lensHeight;
+        const maxLensTop = Math.max(0, navHeight - lensHeight);
         const lensTop = percentage * maxLensTop;
 
         return { top: lensTop, height: lensHeight, display: 'block' };
     };
 
     const lensMetrics = getLensMetrics();
+
+    // Auto-scroll navigator to keep lens in view
+    useEffect(() => {
+        if (listRef.current && !isDraggingLens) {
+            const { top, height } = lensMetrics;
+            const container = listRef.current;
+            const scrollPos = container.scrollTop;
+            const containerHeight = container.clientHeight;
+
+            // If lens is above or below visible area, scroll to it
+            if (top < scrollPos) {
+                container.scrollTo({ top: top - 20, behavior: 'smooth' });
+            } else if (top + height > scrollPos + containerHeight) {
+                container.scrollTo({ top: top + height - containerHeight + 20, behavior: 'smooth' });
+            }
+        }
+    }, [lensMetrics.top, lensMetrics.height, isDraggingLens]);
 
     // Use Local State for "Instant" feedback during drag, otherwise use computed prop-based position
     const displayTop = isDraggingLens && localDragTop !== null ? localDragTop : lensMetrics.top;
@@ -205,7 +224,7 @@ export function DocumentNavigator({
         <div
             ref={sidebarRef}
             className="border-r border-border bg-card/50 backdrop-blur-sm flex flex-col shrink-0 h-full relative group/sidebar select-none"
-            style={{ width: `${width}px`, transition: isResizing ? 'none' : 'width 0.1s ease' }}
+            style={{ width: `${width}px`, transition: isResizing ? 'none' : 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)' }}
         >
             {/* Header */}
             <div className="h-14 border-b border-border flex items-center justify-between px-4 shrink-0 bg-muted/20">
@@ -219,25 +238,44 @@ export function DocumentNavigator({
             <div
                 ref={listRef}
                 onClick={handleTrackClick} // Global Click Handler for Jump
-                className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-2 space-y-2 scrollbar-thin scrollbar-thumb-primary/10 relative"
+                className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-3 scrollbar-none relative"
+                style={{ scrollBehavior: 'smooth' }}
             >
+                {/* Proportional Header Spacer to match Document Padding */}
+                <div className="h-16 w-full italic text-[10px] text-muted-foreground/30 flex items-center justify-center border-b border-border/5 mb-4">
+                    Comienzo del Documento
+                </div>
+
                 {/* Lens Overlay */}
                 {scrollMetrics && scrollMetrics.scrollHeight > scrollMetrics.clientHeight && (
                     <div
                         ref={lensRef}
-                        className="absolute left-0 right-0 z-20 bg-primary/10 border-y-2 border-primary/30 backdrop-blur-[1px] cursor-grab active:cursor-grabbing rounded-sm shadow-sm transition-all duration-75 hover:bg-primary/20"
+                        className="absolute left-0 right-0 z-30 bg-primary/[0.03] border-y-2 border-primary/40 backdrop-blur-[1px] cursor-grab active:cursor-grabbing rounded-lg shadow-[0_0_30px_rgba(var(--primary),0.05)] transition-all duration-200 hover:bg-primary/[0.08] group/lens"
                         style={{
                             top: displayTop,
                             height: lensMetrics.height,
                             display: lensMetrics.display
                         }}
                         onMouseDown={(e) => {
-                            e.stopPropagation(); // Stop propagation so we don't trigger "Jump to Click"
+                            e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
-                            setDragOffset(e.clientY - rect.top); // Remember where we grabbed the lens
+                            setDragOffset(e.clientY - rect.top);
                             setIsDraggingLens(true);
                         }}
-                    />
+                    >
+                        {/* Lens Corner Accents */}
+                        <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-primary/60 rounded-tl-sm" />
+                        <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-primary/60 rounded-tr-sm" />
+                        <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-primary/60 rounded-bl-sm" />
+                        <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-primary/60 rounded-br-sm" />
+
+                        {/* Center Handle */}
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1 opacity-20 group-hover/lens:opacity-50 transition-opacity">
+                            <div className="w-1 h-1 rounded-full bg-primary" />
+                            <div className="w-1 h-1 rounded-full bg-primary" />
+                            <div className="w-1 h-1 rounded-full bg-primary" />
+                        </div>
+                    </div>
                 )}
 
                 {visibleBlocks.map((block, index) => {
@@ -265,28 +303,32 @@ export function DocumentNavigator({
                             // So we don't need a specific handler here unless we want to "Snap".
                             // Let's rely on handleTrackClick for the smooth "Map" feel.
                             className={`
-                                group w-full relative cursor-pointer transition-all duration-200 rounded-lg border
+                                group w-full relative cursor-pointer transition-all duration-300 rounded-xl border-2
                                 ${isSubBlock ? 'ml-4 w-[calc(100%-16px)]' : ''}
                                 ${activeClasses}
-                                p-2 flex flex-col gap-1
+                                p-0 overflow-hidden
                             `}
                         >
-                            <div className="flex flex-col gap-0.5 mb-1 border-b border-border/10 pb-1">
-                                <span className={`text-[10px] font-sans font-black uppercase tracking-widest lining-nums tabular-nums ${textColor}`}>
-                                    {isSubBlock ? 'Sub' : 'Bloque'} {index + 1}
+                            <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 pointer-events-none">
+                                <div className={`w-1.5 h-1.5 rounded-full ${isSubBlock ? 'bg-fuchsia-500' : 'bg-sky-500'} opacity-70`} />
+                                <span className={`text-[9px] font-black uppercase tracking-wider opacity-60 ${textColor}`}>
+                                    {isSubBlock ? 'SUB' : 'BLOCK'} {index + 1}
                                 </span>
-                                {block.title && block.title !== 'Untitled' && (
-                                    <span className={`text-xs font-bold truncate ${textColor}`}>
-                                        {block.title}
-                                    </span>
-                                )}
                             </div>
 
-                            <div className="relative w-full overflow-hidden select-none bg-background/50 rounded-sm p-1">
+                            {block.title && block.title !== 'Untitled' && (
+                                <div className="absolute top-2 right-2 z-10 max-w-[60%] pointer-events-none">
+                                    <span className={`text-[8px] font-bold truncate block bg-background/90 backdrop-blur-md px-2 py-0.5 rounded-full border border-border/20 shadow-sm ${textColor}`}>
+                                        {block.title}
+                                    </span>
+                                </div>
+                            )}
+
+                            <div className="relative w-full overflow-hidden select-none bg-background/30 rounded-md border border-border/5 group-hover:border-primary/20 transition-colors">
                                 <div
-                                    className="origin-top-left w-[1000px] prose dark:prose-invert prose-sm/relaxed"
+                                    className="origin-top-left w-[1000px] prose dark:prose-invert prose-sm/relaxed p-8"
                                     style={{
-                                        zoom: Math.max(0.1, (width - 32) / 1000),
+                                        zoom: Math.max(0.1, (width - 24) / 1000),
                                         pointerEvents: 'none'
                                     }}
                                 >
@@ -307,6 +349,11 @@ export function DocumentNavigator({
                         </div>
                     );
                 })}
+
+                {/* Proportional Footer Spacer */}
+                <div className="h-32 w-full italic text-[10px] text-muted-foreground/30 flex items-center justify-center border-t border-border/5 mt-8">
+                    Fin del Documento
+                </div>
             </div>
 
             {/* Drag Handle */}
