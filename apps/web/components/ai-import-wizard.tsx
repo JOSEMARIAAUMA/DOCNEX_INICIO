@@ -9,9 +9,23 @@ import { analyzeText, StyleAnalysis } from '@/lib/ai/style-analyzer';
 import { StyleMapper } from './style-mapper';
 import { StyleMapping, transformContent } from '@/lib/ai/style-transformer';
 import * as mammoth from 'mammoth';
-import { LucideFileText, LucideUpload, LucideLoader2, LucideMousePointer2, LucideLayout, LucideCode, LucideSparkles, LucideLayers, LucideList, LucideRows3 } from 'lucide-react';
+import { LucideFileText, LucideUpload, LucideLoader2, LucideMousePointer2, LucideLayout, LucideCode, LucideSparkles, LucideLayers, LucideList, LucideRows3, ArrowDownToLine as LucideArrowDownToLine, MessageSquare as LucideMessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+// Hook for debouncing values
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+    return debouncedValue;
+}
 
 // Configure PDF.js worker dynamically to avoid SSR issues
 const getPdfjs = async () => {
@@ -69,11 +83,21 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
     const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
     const [importMode, setImportMode] = useState<'replace' | 'merge'>('merge');
     const [hasExistingBlocks, setHasExistingBlocks] = useState(false);
+    const [defaultTarget, setDefaultTarget] = useState<'active_version' | 'version' | 'linked_ref' | 'unlinked_ref' | 'note'>('active_version');
 
-    // Analyze text when it changes
+    // AI Chat State
+    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const [isChatThinking, setIsChatThinking] = useState(false);
+
+    // Debounce text for heavy analysis
+    const debouncedText = useDebounce(text, 500); // 500ms delay
+
+    // Analyze text when it changes (debounced)
     useEffect(() => {
-        if (text.trim()) {
-            const result = analyzeText(text);
+        if (debouncedText.trim()) {
+            // Processing is now lighter due to sampling in analyzeText
+            const result = analyzeText(debouncedText);
             setAnalysis(result);
             // Only auto-select if we haven't manually set one and it's a fresh analysis
             if (result.headerLevels.length > 0 && blockStrategy === 'header') {
@@ -82,7 +106,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
         } else {
             setAnalysis(null);
         }
-    }, [text, blockStrategy]);
+    }, [debouncedText, blockStrategy]);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -99,8 +123,55 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                 extractedText = await file.text();
             } else if (extension === 'docx') {
                 const arrayBuffer = await file.arrayBuffer();
-                const result = await (mammoth as any).convertToMarkdown({ arrayBuffer });
-                extractedText = result.value;
+                // Configure mammoth to ignore images completely to avoid base64 soup
+                const options = {
+                    ignoreImage: true,
+                    // MAP NATIVE WORD STYLES TO MARKDOWN HEADERS
+                    styleMap: [
+                        "p[style-name='Título 1'] => h1:fresh",
+                        "p[style-name='Título 2'] => h2:fresh",
+                        "p[style-name='Título 3'] => h3:fresh",
+                        "p[style-name='Título 4'] => h4:fresh",
+                        "p[style-name='Título 5'] => h5:fresh",
+                        "p[style-name='Título 6'] => h6:fresh",
+                        "p[style-name='Heading 1'] => h1:fresh",
+                        "p[style-name='Heading 2'] => h2:fresh",
+                        "p[style-name='Heading 3'] => h3:fresh",
+                        "p[style-name='Heading 4'] => h4:fresh",
+                        "p[style-name='Heading 5'] => h5:fresh",
+                        "p[style-name='Heading 6'] => h6:fresh",
+                        "p[style-name='Encabezado 1'] => h1:fresh",
+                        "p[style-name='Encabezado 2'] => h2:fresh",
+                        "p[style-name='Subtitle'] => h2:fresh",
+                        "p[style-name='Subtítulo'] => h2:fresh",
+                        "p[style-name='Quote'] => blockquote:fresh",
+                        "p[style-name='Cita'] => blockquote:fresh"
+                    ],
+                    transformDocument: (element: any) => {
+                        if (element.type === "image") {
+                            return [];
+                        }
+                        return element;
+                    }
+                };
+
+                // Use convertToHtml to preserve formatting (Bold, Italic, Tables) for high visual quality.
+                // The Editor (Tiptap) handles HTML perfectly.
+                const result = await mammoth.convertToHtml({ arrayBuffer }, options);
+
+                // Basic HTML cleanup
+                extractedText = result.value
+                    // CRITICAL: Remove all img tags to prevent base64 "gibberish"
+                    .replace(/<img[^>]*>/gi, '')
+                    // Remove any remaining data:image patterns just in case
+                    .replace(/src="data:image\/[^"]*"/gi, '')
+                    // Remove empty paragraphs
+                    .replace(/<p>\s*<\/p>/g, '')
+                    // Remove excessive newlines if plain text mode interferes, but HTML handles it via tags
+                    .trim();
+
+                // Add a marker to indicate this is HTML content so key extractors know?
+                // Or just rely on tag detection.
             } else if (extension === 'pdf') {
                 const arrayBuffer = await file.arrayBuffer();
                 const pdfjs = await getPdfjs();
@@ -120,7 +191,9 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
             }
 
             if (extractedText) {
-                setText(extractedText.trim());
+                // Final cleanup of excessive newlines regardless of source
+                extractedText = extractedText.replace(/\n{3,}/g, '\n\n').trim();
+                setText(extractedText);
             }
         } catch (error) {
             console.error('Error processing file:', error);
@@ -170,11 +243,11 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
     const generatePreview = async () => {
         setIsLoading(true);
         try {
-            // Step 1: Split into main blocks
             let result = await aiAgent.processText(text, blockStrategy, {
                 headerLevel: blockHeaderLevel,
                 customPattern: blockCustomPattern,
-                isHierarchical: false
+                isHierarchical: false,
+                indexText: blockStrategy === 'index' ? blockSplittingExamples : undefined
             });
 
             // Step 2: Split each block into sub-blocks if hierarchy is enabled
@@ -183,7 +256,9 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                     const children = await aiAgent.processText(block.content, subStrategy, {
                         headerLevel: subHeaderLevel,
                         customPattern: subCustomPattern,
-                        isHierarchical: false
+                        isHierarchical: false, // Recursive call for sub-blocks
+                        // CRITICAL: Pass the subSplittingExamples as indexText if subStrategy is 'index'
+                        indexText: subStrategy === 'index' ? subSplittingExamples : undefined
                     });
 
                     // If sub-splitting happened, the first sub-block might contain the parent header if not handled correctly
@@ -273,6 +348,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
         if (pattern.includes('\\d+\\.')) return 'Numeración secuencial (1., 2.)';
         if (pattern.includes('[A-Z]')) return 'Títulos en MAYÚSCULAS';
         if (currentStrategy === 'semantic') return 'Inteligencia Artificial (Temas)';
+        if (pattern === 'SMART_NUMBERING') return 'Secuencia Inteligente (1, 2, 3...)';
         return pattern;
     };
 
@@ -311,6 +387,40 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
         return true;
     };
 
+
+    const handleChatSubmit = async (msg: string, context: 'blocks' | 'subblocks' = 'blocks') => {
+        if (!msg.trim()) return;
+
+        // If it's subblocks, we don't have a full chat UI state yet, just one-off interactions
+        // But for consistency let's use the agent.
+        if (context === 'subblocks') {
+            const result = await aiAgent.chat(msg, {
+                strategy: subStrategy,
+                currentPattern: subStrategy === 'index' ? subSplittingExamples : subCustomPattern,
+                textPreview: text.slice(0, 1000), // Smaller preview for sub-blocks context roughly
+                isSubBlock: true
+            });
+
+            if (result.action) {
+                if (result.action.type === 'set_pattern') {
+                    setSubStrategy('custom');
+                    setSubCustomPattern(result.action.value);
+                    alert(result.reply); // Simple feedback for now as we don't have a chat history for sub-blocks
+                } else if (result.action.type === 'set_index') {
+                    setSubStrategy('index');
+                    setSubSplittingExamples(result.action.value);
+                    alert(result.reply);
+                }
+            } else {
+                alert(result.reply);
+            }
+            return;
+        }
+
+        // Logic for blocks (main chat) is currently inline in JSX, 
+        // eventually we should move it here but for now I'm only fixing the missing function ref
+        // and supporting subblocks.
+    };
 
     const handleNext = async () => {
         if (step === 'input') {
@@ -486,7 +596,9 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                     onChange={(e) => updateItemRecursive(items, item.id, { title: e.target.value })}
                                     className="w-full bg-transparent font-medium text-foreground focus:outline-none focus:underline"
                                 />
-                                <p className="text-xs text-muted-foreground line-clamp-2">{item.content}</p>
+                                <div className="prose prose-sm max-w-none text-muted-foreground line-clamp-2">
+                                    <div dangerouslySetInnerHTML={{ __html: item.content }} />
+                                </div>
                             </div>
                             <select
                                 value={item.target}
@@ -553,32 +665,22 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                         <LucideLayout className="w-4 h-4 text-primary" />
                                         Sube un archivo o pega tu contenido
                                     </label>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-3">
+                                        {/* Global Target Selector */}
                                         <div className="flex items-center gap-2 px-3 py-1 bg-muted rounded-lg border border-border">
-                                            <input
-                                                type="checkbox"
-                                                id="hierarchical-step1"
-                                                checked={isHierarchical}
-                                                onChange={(e) => setIsHierarchical(e.target.checked)}
-                                                className="w-3.5 h-3.5 accent-primary"
-                                            />
-                                            <label htmlFor="hierarchical-step1" className="text-xs font-medium text-foreground cursor-pointer flex items-center gap-1 group relative">
-                                                Detección Jerárquica
-                                                <LucideSparkles className="w-3 h-3 text-primary/60" />
-                                                {/* Tooltip explanation */}
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-4 bg-popover text-popover-foreground rounded-xl border border-border shadow-2xl opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-50 text-[11px] leading-relaxed font-normal ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-2">
-                                                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border">
-                                                        <LucideLayers className="w-4 h-4 text-primary" />
-                                                        <span className="font-bold text-xs">Modo Estructura de Árbol</span>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <p>Permite una división en **dos niveles** (ej: Capítulos → Artículos).</p>
-                                                        <p>Si está desactivado, el documento se importará como una **lista plana** de bloques.</p>
-                                                        <p className="text-primary font-medium p-2 bg-primary/5 rounded-lg">☆ Muy útil para leyes, manuales o libros extensos.</p>
-                                                    </div>
-                                                </div>
-                                            </label>
+                                            <span className="text-[10px] font-bold uppercase text-muted-foreground">Destino:</span>
+                                            <select
+                                                className="bg-transparent text-xs font-medium text-foreground outline-none cursor-pointer"
+                                                value={defaultTarget}
+                                                onChange={(e) => setDefaultTarget(e.target.value as any)}
+                                            >
+                                                <option value="active_version" className="text-black dark:text-white bg-white dark:bg-zinc-800">Documento Activo</option>
+                                                <option value="version" className="text-black dark:text-white bg-white dark:bg-zinc-800">Nueva Versión</option>
+                                                <option value="note" className="text-black dark:text-white bg-white dark:bg-zinc-800">Notas</option>
+                                                <option value="linked_ref" className="text-black dark:text-white bg-white dark:bg-zinc-800">Referencias</option>
+                                            </select>
                                         </div>
+
                                         <div className="flex bg-muted rounded-lg p-1">
                                             <button
                                                 onClick={() => setViewMode('raw')}
@@ -611,6 +713,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                                     className="w-full flex-1 p-4 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/20 outline-none resize-none font-mono text-sm leading-relaxed"
                                                     placeholder="Pega texto aquí o usa la zona de la derecha para subir un documento (.docx, .pdf, .txt)..."
                                                     value={text}
+                                                    spellCheck={false} // Disable spellcheck for performance
                                                     onPaste={handlePaste}
                                                     onSelect={handleTextareaSelect}
                                                     onChange={(e) => setText(e.target.value)}
@@ -628,14 +731,18 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="flex-1 flex flex-col relative group">
+                                            <div className="flex-1 flex flex-col relative group min-h-0">
                                                 <div
-                                                    className="flex-1 p-6 rounded-xl border border-border bg-background overflow-auto prose prose-invert max-w-none"
+                                                    className="flex-1 p-6 rounded-xl border border-border bg-background overflow-auto prose prose-sm max-w-none scrollbar-thin scrollbar-thumb-primary/20 break-words whitespace-pre-wrap"
                                                     onMouseUp={handlePreviewSelect}
                                                 >
-                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                        {text || '*El documento está vacío*'}
-                                                    </ReactMarkdown>
+                                                    {text.trim().startsWith('<') ? (
+                                                        <div dangerouslySetInnerHTML={{ __html: text }} />
+                                                    ) : (
+                                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                            {text.length > 50000 ? text.slice(0, 50000) + '\n\n*(Vista previa truncada por rendimiento...)*' : (text || '*El documento está vacío*')}
+                                                        </ReactMarkdown>
+                                                    )}
                                                 </div>
                                                 {(viewMode === 'preview' && (blockSplittingExamples || subSplittingExamples)) && (
                                                     <div className="absolute top-4 right-4 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -655,96 +762,129 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                     {/* Upload Zone & Analysis */}
                                     <div className="col-span-2 flex flex-col gap-4 min-h-0">
                                         <div
-                                            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                            onDragOver={(e) => {
+                                                if (text) return; // Prevent drag if loaded
+                                                e.preventDefault();
+                                                setIsDragging(true);
+                                            }}
                                             onDragLeave={() => setIsDragging(false)}
                                             onDrop={async (e) => {
+                                                if (text) return; // Prevent drop if loaded
                                                 e.preventDefault();
                                                 setIsDragging(false);
                                                 const file = e.dataTransfer.files?.[0];
                                                 if (file) await processFile(file);
                                             }}
-                                            className={`h-48 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 text-center transition-all ${isDragging ? 'border-primary bg-primary/10 scale-[0.98]' : 'border-border hover:border-primary/50 bg-muted/30 hover:bg-muted/50'
+                                            className={`h-32 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-4 text-center transition-all ${text
+                                                ? 'border-border/50 bg-muted/10 opacity-50 grayscale pointer-events-none' // Disabled state
+                                                : isDragging
+                                                    ? 'border-primary bg-primary/10 scale-[0.98]'
+                                                    : 'border-border hover:border-primary/50 bg-muted/30 hover:bg-muted/50'
                                                 }`}
                                         >
                                             {isProcessingFile ? (
-                                                <div className="space-y-3">
-                                                    <LucideLoader2 className="w-10 h-10 text-primary animate-spin mx-auto" />
-                                                    <p className="text-sm font-medium text-foreground">Procesando archivo...</p>
+                                                <div className="space-y-2">
+                                                    <LucideLoader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+                                                    <p className="text-xs font-medium text-foreground">Procesando archivo...</p>
                                                 </div>
                                             ) : (
-                                                <div className="space-y-3">
-                                                    <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-2">
-                                                        <LucideUpload className="w-7 h-7 text-primary" />
+                                                <div className="flex flex-col items-center gap-3 w-full px-4">
+                                                    <div className="text-center">
+                                                        <p className="text-xs font-bold text-foreground">
+                                                            {text ? 'Archivo cargado' : 'Pincha o arrastra un archivo'}
+                                                        </p>
+                                                        <p className="text-[10px] text-muted-foreground mt-0.5">DOCX, PDF, TXT</p>
                                                     </div>
-                                                    <div>
-                                                        <p className="text-sm font-semibold text-foreground">Pincha o arrastra un archivo</p>
-                                                        <p className="text-xs text-muted-foreground mt-1">Soportamos DOCX, PDF y TXT</p>
-                                                    </div>
-                                                    <input
-                                                        type="file"
-                                                        accept=".docx,.pdf,.txt"
-                                                        onChange={handleFileChange}
-                                                        className="hidden"
-                                                        id="file-upload"
-                                                    />
-                                                    <label
-                                                        htmlFor="file-upload"
-                                                        className="mt-4 inline-block px-4 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl cursor-pointer hover:shadow-lg transition-all"
-                                                    >
-                                                        Seleccionar Archivo
-                                                    </label>
+
+                                                    {!text && (
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                                <LucideArrowDownToLine className="w-4 h-4 text-primary" />
+                                                            </div>
+                                                            <input
+                                                                type="file"
+                                                                accept=".docx,.pdf,.txt"
+                                                                onChange={handleFileChange}
+                                                                className="hidden"
+                                                                id="file-upload"
+                                                            />
+                                                            <label
+                                                                htmlFor="file-upload"
+                                                                className="px-4 py-1.5 text-xs font-bold bg-primary text-primary-foreground rounded-lg cursor-pointer hover:shadow-lg transition-all"
+                                                            >
+                                                                Seleccionar Archivo
+                                                            </label>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
 
                                         {analysis && analysis.hasContent && (
                                             <div className="flex-1 bg-card rounded-2xl border border-border overflow-hidden flex flex-col shadow-sm">
-                                                <div className="p-4 bg-primary/5 border-b border-border flex items-center justify-between">
+                                                <div className="pl-4 pr-3 py-3 bg-primary/5 border-b border-border flex items-center justify-between">
                                                     <div className="flex items-center gap-2 text-primary">
-                                                        <LucideFileText className="w-5 h-5" />
+                                                        <LucideFileText className="w-4 h-4" />
                                                         <span className="text-xs font-bold tracking-wider uppercase">Análisis del Documento</span>
                                                     </div>
                                                     <div className="px-2 py-0.5 rounded-full bg-primary/10 text-[10px] font-bold text-primary">IA ACTIVA</div>
                                                 </div>
-                                                <div className="p-5 flex-1 overflow-auto space-y-5">
-                                                    <div>
-                                                        <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2 tracking-widest">Estructura Detectada</p>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {analysis.headerLevels.length > 0 ? (
-                                                                analysis.headerLevels.map(level => (
-                                                                    <span key={level} className="px-2.5 py-1 rounded-lg bg-background border border-border text-xs font-mono">
-                                                                        H{level}: <span className="text-primary font-bold">{analysis.estimatedBlocks[level] || 0}</span>
-                                                                    </span>
-                                                                ))
-                                                            ) : (
-                                                                <span className="text-xs text-muted-foreground italic">No se han detectado encabezados estándar (#)</span>
-                                                            )}
+                                                <div className="p-5 flex-1 flex flex-col gap-5 overflow-hidden">
+                                                    <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-5">
+                                                        <div>
+                                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2 tracking-widest">Estructura Detectada</p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {analysis.headerLevels.length > 0 ? (
+                                                                    analysis.headerLevels.map(level => (
+                                                                        <span key={level} className="px-2.5 py-1 rounded bg-background border border-border text-xs font-mono">
+                                                                            H{level}: <span className="text-primary font-bold">{analysis.estimatedBlocks[level] || 0}</span>
+                                                                        </span>
+                                                                    ))
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground italic">No detectada</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div>
+                                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2 tracking-widest">Tipos de Contenido</p>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {analysis.textStyles.length > 0 ? (
+                                                                    analysis.textStyles.map(style => (
+                                                                        <span key={style.type} className="px-2.5 py-1 rounded bg-muted text-xs flex items-center gap-1.5">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-primary opacity-60" />
+                                                                            {style.label}
+                                                                        </span>
+                                                                    ))
+                                                                ) : (
+                                                                    <span className="text-xs text-muted-foreground italic">Texto plano</span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
 
-                                                    <div>
-                                                        <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2 tracking-widest">Estilos de Formato</p>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {analysis.textStyles.length > 0 ? (
-                                                                analysis.textStyles.map(style => (
-                                                                    <span key={style.type} className="px-2.5 py-1 rounded-lg bg-muted text-xs flex items-center gap-1.5">
-                                                                        <span className="w-1.5 h-1.5 rounded-full bg-primary opacity-60" />
-                                                                        {style.label}
-                                                                    </span>
-                                                                ))
-                                                            ) : (
-                                                                <span className="text-xs text-muted-foreground italic">No se han detectado estilos Markdown</span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
+                                                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 shrink-0">
                                                         <p className="text-[10px] font-bold text-primary/70 uppercase mb-2">Recomendación de División</p>
-                                                        <p className="text-xs text-foreground leading-relaxed">
-                                                            {analysis.headerLevels.length > 0
-                                                                ? `Se recomienda dividir por ${analysis.headerLevels[0] === 1 ? 'Capítulos (H1)' : `Secciones (H${analysis.headerLevels[0]})`}.`
-                                                                : 'Este documento parece ser un único bloque. Prueba a usar patrones personalizados.'}
-                                                        </p>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <span className="text-[10px] text-muted-foreground block mb-1 uppercase tracking-wide">Bloques</span>
+                                                                <p className="text-sm font-bold text-foreground">
+                                                                    {analysis.headerLevels.length > 0
+                                                                        ? (analysis.headerLevels[0] === 1 ? 'Capítulos (H1)' : `Secciones (H${analysis.headerLevels[0]})`)
+                                                                        : 'Manual / Patrones'
+                                                                    }
+                                                                </p>
+                                                            </div>
+                                                            <div className="border-l border-primary/10 pl-4">
+                                                                <span className="text-[10px] text-muted-foreground block mb-1 uppercase tracking-wide">Sub-bloques</span>
+                                                                <p className="text-sm font-bold text-foreground">
+                                                                    {analysis.headerLevels.length > 1
+                                                                        ? `Secciones (H${analysis.headerLevels[1]})`
+                                                                        : 'Personalizado'
+                                                                    }
+                                                                </p>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -757,59 +897,58 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                 <button
                                     onClick={() => setBlockStrategy('header')}
                                     disabled={!analysis || analysis.headerLevels.length === 0}
-                                    className={`p-3 rounded-xl border-2 text-left transition-all ${blockStrategy === 'header'
+                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${blockStrategy === 'header'
                                         ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
                                         : 'border-border hover:border-primary/50'
                                         } disabled:opacity-50 disabled:cursor-not-allowed`}
                                 >
-                                    <div className="font-bold text-xs text-foreground">Por Encabezado</div>
-                                    <div className="text-[10px] text-muted-foreground mt-0.5">Basado en títulos #</div>
+                                    <div className="font-bold text-sm text-foreground mb-0.5">Por Encabezado</div>
+                                    <div className="text-xs text-muted-foreground">Basado en títulos #</div>
                                 </button>
                                 <button
                                     onClick={() => setBlockStrategy('semantic')}
-                                    className={`p-3 rounded-xl border-2 text-left transition-all ${blockStrategy === 'semantic'
+                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${blockStrategy === 'semantic'
                                         ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
                                         : 'border-border hover:border-primary/50'
                                         }`}
                                 >
-                                    <div className="text-primary font-bold text-xs flex items-center gap-1">
+                                    <div className="text-primary font-bold text-sm flex items-center gap-1.5 mb-0.5">
                                         Por Tema (IA)
                                     </div>
-                                    <div className="text-[10px] text-muted-foreground mt-0.5">Detección temática</div>
+                                    <div className="text-xs text-muted-foreground">Detección temática</div>
                                 </button>
                                 <button
                                     onClick={() => setBlockStrategy('custom')}
-                                    className={`p-3 rounded-xl border-2 text-left transition-all ${blockStrategy === 'custom'
+                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${blockStrategy === 'custom'
                                         ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
                                         : 'border-border hover:border-primary/50'
                                         }`}
                                 >
-                                    <div className="font-bold text-xs text-foreground">Instrucciones</div>
-                                    <div className="text-[10px] text-muted-foreground mt-0.5">Criterios manuales</div>
+                                    <div className="font-bold text-sm text-foreground mb-0.5">Instrucciones</div>
+                                    <div className="text-xs text-muted-foreground">Criterios manuales</div>
                                 </button>
                                 <button
-                                    onClick={handleSplitBySelection}
-                                    disabled={selection.end <= selection.start}
-                                    className={`p-3 rounded-xl border-2 text-left transition-all ${blockStrategy === 'custom' && blockSplittingExamples
+                                    onClick={() => handleSplitBySelection()}
+                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${blockStrategy === 'selection'
                                         ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
                                         : 'border-border hover:border-primary/50'
-                                        } disabled:opacity-40`}
+                                        }`}
                                 >
-                                    <div className="font-bold text-xs text-foreground flex items-center gap-1.5">
-                                        <LucideMousePointer2 className="w-3 h-3 text-primary" />
+                                    <div className="font-bold text-sm text-foreground mb-0.5 flex items-center gap-1.5">
+                                        <LucideMousePointer2 className="w-3.5 h-3.5" />
                                         Por Selección
                                     </div>
-                                    <div className="text-[10px] text-muted-foreground mt-0.5">Usa el texto marcado</div>
+                                    <div className="text-xs text-muted-foreground">Usa el texto marcado</div>
                                 </button>
                                 <button
-                                    onClick={() => setBlockStrategy('manual')}
-                                    className={`p-3 rounded-xl border-2 text-left transition-all ${blockStrategy === 'manual'
+                                    onClick={() => setBlockStrategy('single')}
+                                    className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center text-center transition-all ${blockStrategy === 'single'
                                         ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
                                         : 'border-border hover:border-primary/50'
                                         }`}
                                 >
-                                    <div className="font-bold text-xs text-foreground">Un Solo Bloque</div>
-                                    <div className="text-[10px] text-muted-foreground mt-0.5">Sin dividir</div>
+                                    <div className="font-bold text-sm text-foreground mb-0.5">Un Solo Bloque</div>
+                                    <div className="text-xs text-muted-foreground">Sin dividir</div>
                                 </button>
                             </div>
                         </div>
@@ -817,74 +956,226 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
 
                     {step === 'configure' && analysis && (
                         <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                            {/* Tabs Navigation */}
-                            <div className="flex items-center gap-4 mb-6 border-b border-border">
-                                <button
-                                    onClick={() => setConfigTab('blocks')}
-                                    className={`pb-2 px-4 text-sm font-bold transition-all border-b-2 ${configTab === 'blocks' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
-                                >
-                                    1. Configurar Bloques
-                                </button>
-                                {isHierarchical && (
+                            {/* Unified Configuration Header */}
+                            <div className="flex items-center justify-between mb-6 border-b border-border pb-2 bg-muted/20 px-4 pt-4 rounded-t-xl">
+                                <div className="flex items-center gap-4">
                                     <button
-                                        onClick={() => setConfigTab('subblocks')}
-                                        className={`pb-2 px-4 text-sm font-bold transition-all border-b-2 ${configTab === 'subblocks' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                                        onClick={() => setConfigTab('blocks')}
+                                        className={`pb-2 text-sm font-bold transition-all border-b-2 px-2 ${configTab === 'blocks' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        1. Configurar Bloques
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (!isHierarchical) setIsHierarchical(true);
+                                            setConfigTab('subblocks');
+                                        }}
+                                        className={`pb-2 text-sm font-bold transition-all border-b-2 px-2 flex items-center gap-2 ${configTab === 'subblocks' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
                                     >
                                         2. Configurar Sub-bloques
+                                        {!isHierarchical && <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted-foreground/20 text-muted-foreground">Opcional</span>}
                                     </button>
-                                )}
+                                </div>
+
+                                <div className="flex items-center gap-3 pr-2">
+                                    <label className="text-xs font-medium text-foreground flex items-center gap-2 cursor-pointer bg-card px-3 py-1.5 rounded-lg border border-border hover:border-primary/50 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            checked={isHierarchical}
+                                            onChange={(e) => {
+                                                setIsHierarchical(e.target.checked);
+                                                if (e.target.checked) setConfigTab('subblocks');
+                                                else setConfigTab('blocks');
+                                            }}
+                                            className="w-4 h-4 accent-primary rounded cursor-pointer"
+                                        />
+                                        <span className="flex items-center gap-1.5">
+                                            <LucideSparkles className={`w-3.5 h-3.5 ${isHierarchical ? 'text-primary' : 'text-muted-foreground'}`} />
+                                            Activar Sub-bloques
+                                        </span>
+                                    </label>
+                                </div>
                             </div>
 
-                            <div className="flex-1 grid grid-cols-5 gap-6 min-h-0 overflow-hidden">
+                            <div className="flex-1 grid grid-cols-5 gap-6 min-h-0 overflow-hidden px-1">
                                 {/* Left Side: Configuration Options */}
-                                <div className="col-span-3 space-y-6 overflow-auto pr-4">
+                                <div className="col-span-3 space-y-6 overflow-auto pr-4 scrollbar-thin scrollbar-thumb-muted">
                                     {configTab === 'blocks' ? (
                                         <div className="space-y-6">
                                             <div className="space-y-4">
                                                 <h4 className="text-sm font-bold uppercase text-muted-foreground">Estrategia de División de Bloques</h4>
                                                 <div className="grid grid-cols-2 gap-3">
                                                     <button onClick={() => setBlockStrategy('header')} disabled={analysis.headerLevels.length === 0}
-                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${blockStrategy === 'header' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} disabled:opacity-40`}>
+                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${blockStrategy === 'header' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} disabled:opacity-40 select-none`}>
                                                         <div className="font-bold text-sm">Por Encabezado</div>
                                                         <p className="text-xs text-muted-foreground mt-1">Usa los niveles # detectados en el Markdown.</p>
                                                     </button>
                                                     <button onClick={() => setBlockStrategy('custom')}
-                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${blockStrategy === 'custom' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'}`}>
+                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${blockStrategy === 'custom' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} select-none`}>
                                                         <div className="font-bold text-sm">Criterio Personalizado</div>
                                                         <p className="text-xs text-muted-foreground mt-1">Usa ejemplos o selecciones de texto.</p>
+                                                    </button>
+                                                    <button onClick={() => setBlockStrategy('index')}
+                                                        className={`col-span-2 p-4 rounded-xl border-2 text-left transition-all ${blockStrategy === 'index' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} select-none`}>
+                                                        <div className="font-bold text-sm flex items-center gap-2">
+                                                            <LucideList className="w-4 h-4 text-primary" />
+                                                            Por Índice / Tabla de Contenidos
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground mt-1">Pega el índice del documento y la IA lo dividirá siguiendo esa estructura.</p>
                                                     </button>
                                                 </div>
                                             </div>
 
                                             {blockStrategy === 'header' && (
                                                 <div className="grid grid-cols-3 gap-2">
-                                                    {[1, 2, 3, 4, 5, 6].map(level => (
-                                                        <button key={level} onClick={() => setBlockHeaderLevel(level)} disabled={!analysis.headerLevels.includes(level)}
-                                                            className={`p-3 rounded-lg border-2 flex flex-col items-center justify-center ${blockHeaderLevel === level ? 'border-primary bg-primary/10' : 'border-border opacity-50'} disabled:opacity-20`}>
-                                                            <span className="font-bold">H{level}</span>
-                                                            <span className="text-[10px]">{analysis.estimatedBlocks[level] || 0} bloques</span>
-                                                        </button>
-                                                    ))}
+                                                    {[1, 2, 3, 4, 5, 6].map(level => {
+                                                        const isAvailable = analysis.headerLevels.includes(level);
+                                                        const isSelected = blockHeaderLevel === level;
+                                                        return (
+                                                            <button
+                                                                key={level}
+                                                                onClick={() => setBlockHeaderLevel(level)}
+                                                                disabled={!isAvailable}
+                                                                className={`p-3 rounded-xl border-2 flex flex-col items-center justify-center transition-all ${isSelected
+                                                                    ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-sm z-10'
+                                                                    : isAvailable
+                                                                        ? 'border-border bg-card hover:border-primary/50 hover:bg-muted text-foreground'
+                                                                        : 'border-border/50 bg-muted/20 opacity-40 grayscale cursor-not-allowed'
+                                                                    }`}
+                                                            >
+                                                                <span className={`font-bold text-sm ${isSelected ? 'text-primary' : isAvailable ? 'text-foreground' : 'text-muted-foreground'}`}>H{level}</span>
+                                                                <span className={`text-[10px] ${isSelected ? 'text-primary/80' : 'text-muted-foreground'}`}>
+                                                                    {analysis.estimatedBlocks[level] || 0} bloques
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
 
-                                            {blockStrategy === 'custom' && (
-                                                <div className="space-y-3 p-4 bg-muted/20 rounded-xl border border-border">
-                                                    <label className="text-xs font-bold uppercase text-muted-foreground">Ejemplo de inicio de bloque</label>
-                                                    <input className="w-full p-2.5 bg-background border border-border rounded-lg text-sm"
-                                                        value={blockSplittingExamples}
-                                                        onChange={async (e) => {
-                                                            setBlockSplittingExamples(e.target.value);
-                                                            const p = await aiAgent.generatePatternsFromExamples(e.target.value);
-                                                            setBlockCustomPattern(p.parentPattern);
-                                                        }}
-                                                        placeholder="Ej: TITULO I o Capítulo 1" />
-                                                    {blockCustomPattern && (
-                                                        <div className="p-3 bg-primary/5 rounded border border-primary/10">
-                                                            <p className="text-[10px] font-bold text-primary/60 uppercase">Criterio Detectado</p>
-                                                            <p className="text-xs font-medium">{humanizePattern(blockCustomPattern, 'custom', blockHeaderLevel)}</p>
+                                            {(blockStrategy === 'custom' || blockStrategy === 'index') && (
+                                                <div className="space-y-4 pt-4 border-t border-border animate-in fade-in slide-in-from-top-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-bold uppercase text-foreground">
+                                                            {blockStrategy === 'index' ? 'Asistente de Índice IA' : 'Asistente de Patrones IA'}
+                                                        </label>
+                                                        <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">BETA</span>
+                                                    </div>
+
+                                                    {/* Chat Interface */}
+                                                    <div className="bg-muted/30 rounded-xl border border-border overflow-hidden flex flex-col h-[340px]">
+                                                        {/* Messages Area */}
+                                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 font-sans">
+                                                            {/* Initial System Message */}
+                                                            <div className="flex gap-3">
+                                                                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                                                                    <LucideSparkles className="w-3.5 h-3.5 text-primary" />
+                                                                </div>
+                                                                <div className="bg-card border border-border p-3 rounded-2xl rounded-tl-none text-xs leading-relaxed text-foreground shadow-sm">
+                                                                    {blockStrategy === 'index'
+                                                                        ? "Hola. Soy tu asistente de importación. Pega aquí el índice del documento o descríbeme cómo quieres dividirlo."
+                                                                        : "Hola. Puedo ayudarte a crear reglas de división personalizadas. Dime qué buscas, por ejemplo: 'Divide cuando veas Título X'."}
+                                                                </div>
+                                                            </div>
+
+                                                            {chatMessages.map((msg, i) => (
+                                                                <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                                                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
+                                                                        {msg.role === 'user' ? <LucideMessageSquare className="w-3.5 h-3.5" /> : <LucideSparkles className="w-3.5 h-3.5" />}
+                                                                    </div>
+                                                                    <div className={`p-3 rounded-2xl text-xs leading-relaxed shadow-sm max-w-[85%] ${msg.role === 'user'
+                                                                        ? 'bg-primary text-primary-foreground rounded-tr-none'
+                                                                        : 'bg-card border border-border rounded-tl-none text-foreground'
+                                                                        }`}>
+                                                                        {msg.content}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+
+                                                            {isChatThinking && (
+                                                                <div className="flex gap-3">
+                                                                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                                                                        <LucideLoader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+                                                                    </div>
+                                                                    <div className="bg-card border border-border p-3 rounded-2xl rounded-tl-none text-xs text-muted-foreground shadow-sm italic">
+                                                                        Analizando...
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            <div id="chat-end-anchor"></div>
                                                         </div>
-                                                    )}
+
+                                                        {/* Input Area */}
+                                                        <div className="p-3 bg-card border-t border-border">
+                                                            <div className="relative flex items-end gap-2">
+                                                                <textarea
+                                                                    placeholder={blockStrategy === 'index' ? "Pega el índice o escribe una instrucción..." : "Describe el patrón de división..."}
+                                                                    className="flex-1 min-h-[40px] max-h-[100px] p-3 pr-10 rounded-xl border border-border bg-muted/20 text-xs focus:ring-2 focus:ring-primary/20 outline-none resize-none"
+                                                                    value={chatInput}
+                                                                    onChange={(e) => setChatInput(e.target.value)}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                                                            e.preventDefault();
+                                                                            if (chatInput.trim() && !isChatThinking) {
+                                                                                const msg = chatInput;
+                                                                                setChatInput('');
+                                                                                setChatMessages(prev => [...prev, { role: 'user', content: msg }]);
+                                                                                setIsChatThinking(true);
+                                                                                // Call Agent
+                                                                                aiAgent.chat(msg, {
+                                                                                    strategy: blockStrategy,
+                                                                                    currentPattern: blockStrategy === 'index' ? blockSplittingExamples : blockCustomPattern,
+                                                                                    textPreview: text.slice(0, 5000)
+                                                                                }).then(response => {
+                                                                                    setIsChatThinking(false);
+                                                                                    setChatMessages(prev => [...prev, { role: 'assistant', content: response.reply }]);
+                                                                                    // Scroll to bottom
+                                                                                    setTimeout(() => document.getElementById('chat-end-anchor')?.scrollIntoView({ behavior: 'smooth' }), 100);
+
+                                                                                    if (response.action) {
+                                                                                        if (response.action.type === 'set_pattern') setBlockCustomPattern(response.action.value);
+                                                                                        if (response.action.type === 'set_index') setBlockSplittingExamples(response.action.value);
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <button
+                                                                    className="p-2.5 rounded-xl bg-primary text-primary-foreground hover:opacity-90 transition-opacity shadow-sm mb-0.5 disabled:opacity-50"
+                                                                    disabled={!chatInput.trim() || isChatThinking}
+                                                                    onClick={() => {
+                                                                        if (chatInput.trim() && !isChatThinking) {
+                                                                            const msg = chatInput;
+                                                                            setChatInput('');
+                                                                            setChatMessages(prev => [...prev, { role: 'user', content: msg }]);
+                                                                            setIsChatThinking(true);
+                                                                            aiAgent.chat(msg, {
+                                                                                strategy: blockStrategy,
+                                                                                currentPattern: blockStrategy === 'index' ? blockSplittingExamples : blockCustomPattern,
+                                                                                textPreview: text.slice(0, 5000)
+                                                                            }).then(response => {
+                                                                                setIsChatThinking(false);
+                                                                                setChatMessages(prev => [...prev, { role: 'assistant', content: response.reply }]);
+                                                                                // Scroll to bottom
+                                                                                setTimeout(() => document.getElementById('chat-end-anchor')?.scrollIntoView({ behavior: 'smooth' }), 100);
+
+                                                                                if (response.action) {
+                                                                                    if (response.action.type === 'set_pattern') setBlockCustomPattern(response.action.value);
+                                                                                    if (response.action.type === 'set_index') setBlockSplittingExamples(response.action.value);
+                                                                                }
+                                                                            });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <LucideSparkles className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-[10px] text-muted-foreground mt-2 px-1">
+                                                                La IA analizará tu petición y configurará la regla de división automáticamente.
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
@@ -894,14 +1185,22 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                                 <h4 className="text-sm font-bold uppercase text-muted-foreground">Estrategia para Sub-bloques</h4>
                                                 <div className="grid grid-cols-2 gap-3">
                                                     <button onClick={() => setSubStrategy('header')} disabled={analysis.headerLevels.length === 0}
-                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${subStrategy === 'header' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} disabled:opacity-40`}>
+                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${subStrategy === 'header' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} disabled:opacity-40 select-none`}>
                                                         <div className="font-bold text-sm">Por Encabezado</div>
                                                         <p className="text-xs text-muted-foreground mt-1">Ideal si los sub-bloques son H2, H3...</p>
                                                     </button>
                                                     <button onClick={() => setSubStrategy('custom')}
-                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${subStrategy === 'custom' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'}`}>
+                                                        className={`p-4 rounded-xl border-2 text-left transition-all ${subStrategy === 'custom' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} select-none`}>
                                                         <div className="font-bold text-sm">Criterio Personalizado</div>
                                                         <p className="text-xs text-muted-foreground mt-1">Usa selecciones dentro del bloque.</p>
+                                                    </button>
+                                                    <button onClick={() => setSubStrategy('index')}
+                                                        className={`col-span-2 p-4 rounded-xl border-2 text-left transition-all ${subStrategy === 'index' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/20'} select-none`}>
+                                                        <div className="font-bold text-sm flex items-center gap-2">
+                                                            <LucideList className="w-4 h-4 text-primary" />
+                                                            Por Índice Secundario
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground mt-1">Divide el contenido del bloque principal usando otro índice.</p>
                                                     </button>
                                                 </div>
                                             </div>
@@ -936,11 +1235,78 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                                     )}
                                                 </div>
                                             )}
+
+                                            {subStrategy === 'index' && (
+                                                <div className="space-y-3 p-4 bg-muted/20 rounded-xl border border-border animate-in fade-in slide-in-from-bottom-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-2">
+                                                            <span>Índice para Sub-bloques</span>
+                                                        </label>
+                                                        <button
+                                                            onClick={async () => {
+                                                                // Use the same detection but apply to Sub examples
+                                                                const detected = await aiAgent.detectIndexFromText(text);
+                                                                if (detected) {
+                                                                    setSubSplittingExamples(detected);
+                                                                } else {
+                                                                    alert('No se detectó un índice obvio. Inténtalo manualmente.');
+                                                                }
+                                                            }}
+                                                            className="text-[10px] bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1 rounded-full flex items-center gap-1.5 transition-colors font-semibold"
+                                                        >
+                                                            <LucideSparkles className="w-3 h-3" />
+                                                            Auto-detectar desde texto
+                                                        </button>
+                                                    </div>
+                                                    <textarea
+                                                        className="w-full h-32 p-3 bg-background border border-border rounded-lg text-sm font-mono leading-relaxed resize-none focus:ring-2 focus:ring-primary/20 outline-none"
+                                                        value={subSplittingExamples}
+                                                        onChange={(e) => setSubSplittingExamples(e.target.value)}
+                                                        placeholder={`1.1. Subsección A\n1.2. Subsección B...`}
+                                                    />
+
+                                                    {/* AI Assistant Chat Input for Sub-blocks */}
+                                                    <div className="pt-2 border-t border-border mt-2">
+                                                        <label className="text-[10px] font-bold uppercase text-primary mb-1.5 flex items-center gap-1">
+                                                            <LucideSparkles className="w-3 h-3" />
+                                                            Refinar Sub-bloques con IA
+                                                        </label>
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                id="sub-chat-input"
+                                                                className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-xs"
+                                                                placeholder="Ej: Los sub-bloques son las letras a), b)..."
+                                                                onKeyDown={async (e) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        const val = (e.target as HTMLInputElement).value;
+                                                                        if (!val) return;
+                                                                        await handleChatSubmit(val, 'subblocks');
+                                                                        (e.target as HTMLInputElement).value = '';
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    const input = document.getElementById('sub-chat-input') as HTMLInputElement;
+                                                                    if (input?.value) {
+                                                                        handleChatSubmit(input.value, 'subblocks');
+                                                                        input.value = '';
+                                                                    }
+                                                                }}
+                                                                className="px-3 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-bold"
+                                                            >
+                                                                Enviar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
                                     {/* Matches Preview (common for both) */}
-                                    <div className="mt-8 space-y-3">
+                                    <div className="mt-8 space-y-3 pb-8">
+                                        {/* Added pb-8 to ensure scrollable content has padding at bottom */}
                                         <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                                             <LucideList className="w-3 h-3" />
                                             Coincidencias Detectadas
@@ -948,7 +1314,8 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                         <div className="space-y-1.5 min-h-[100px] border-l-2 border-primary/20 pl-4">
                                             {getMatchesForText(text, configTab === 'blocks' ? (blockStrategy === 'header' ? `^#{${blockHeaderLevel}}\\s+.+` : blockCustomPattern) : (subStrategy === 'header' ? `^#{${subHeaderLevel}}\\s+.+` : subCustomPattern)).length > 0 ? (
                                                 getMatchesForText(text, configTab === 'blocks' ? (blockStrategy === 'header' ? `^#{${blockHeaderLevel}}\\s+.+` : blockCustomPattern) : (subStrategy === 'header' ? `^#{${subHeaderLevel}}\\s+.+` : subCustomPattern)).map((m, i) => (
-                                                    <div key={i} className="text-xs text-foreground py-1 border-b border-border/50 truncate last:border-0">{m}</div>
+                                                    // REMOVED .slice(0, 2) here!
+                                                    <div key={i} className="text-xs text-foreground py-1 border-b border-border/50 truncate last:border-0 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: m }} />
                                                 ))
                                             ) : (
                                                 <p className="text-xs text-muted-foreground italic">No se han detectado elementos con este criterio.</p>
@@ -992,14 +1359,16 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                                             onClick={() => { setSelectedBlockIndex(i); setConfigTab('subblocks'); }}
                                                             className={`flex-1 text-left px-3 py-2 rounded-lg text-xs font-bold transition-all ${selectedBlockIndex === i && configTab === 'subblocks' ? 'bg-primary text-white shadow-md' : 'bg-background hover:bg-primary/10 text-foreground border border-border/50'}`}
                                                         >
-                                                            {m}
+                                                            <span dangerouslySetInnerHTML={{ __html: m }} />
                                                         </button>
                                                     </div>
-                                                    {isExpanded && isHierarchical && (
-                                                        <div className="ml-6 pl-3 border-l-2 border-primary/30 space-y-1 py-1">
-                                                            <p className="text-[10px] text-muted-foreground italic">Configurando sub-bloques...</p>
-                                                        </div>
-                                                    )}
+                                                    {
+                                                        isExpanded && isHierarchical && (
+                                                            <div className="ml-6 pl-3 border-l-2 border-primary/30 space-y-1 py-1">
+                                                                <p className="text-[10px] text-muted-foreground italic">Configurando sub-bloques...</p>
+                                                            </div>
+                                                        )
+                                                    }
                                                 </div>
                                             );
                                         })}
@@ -1124,7 +1493,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                                     setText('');
                                     setItems([]);
                                     setStep('input');
-                                    onClose();
+                                    // onClose(); // Keep modal open for new file
                                 }
                             }}
                             className="px-4 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors"
@@ -1174,6 +1543,6 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 }

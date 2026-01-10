@@ -113,6 +113,29 @@ export async function importItems(
         }
 
         await insertItemsRecursive(targetItems);
+        // Generate semantic links for new blocks in this document
+        try {
+            const { listActiveBlocks } = await import('@/lib/api');
+            const { processAutoLinks } = await import('@/lib/ai/semantic-engine');
+
+            // Fetch all blocks once for the context (from the target document)
+            const allBlocks = await listActiveBlocks(currentDocId);
+
+            // Fetch recent blocks from this batch
+            const { data: recentBlocks } = await supabase
+                .from('document_blocks')
+                .select('*')
+                .eq('document_id', currentDocId)
+                .order('created_at', { ascending: false })
+                .limit(targetItems.length * 2); // heuristic limit, or use actual count if tracked
+
+            if (recentBlocks && recentBlocks.length > 0) {
+                console.log(`🤖 Generando enlaces semánticos para document ${currentDocId}...`);
+                await Promise.all(recentBlocks.map(block => processAutoLinks(block, allBlocks)));
+            }
+        } catch (e) {
+            console.error("Error generating auto-links:", e);
+        }
     }
 
     return { success: true, count };

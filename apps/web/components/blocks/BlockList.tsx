@@ -82,6 +82,8 @@ export default function BlockList({
         }
     };
 
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+
     const toggleExpand = (blockId: string) => {
         setExpandedBlockIds(prev => {
             const next = new Set(prev);
@@ -143,6 +145,7 @@ export default function BlockList({
 
     const deselectAll = () => {
         setMultiSelectedIds(new Set());
+        setIsSelectionMode(false);
     };
 
     const handleBulkAction = (action: string) => {
@@ -151,18 +154,24 @@ export default function BlockList({
         onBlockAction(ids, action);
         if (action === 'bulk-delete' || action === 'bulk-merge') {
             setMultiSelectedIds(new Set());
+            setIsSelectionMode(false);
         }
     };
 
     return (
         <div className="h-full flex flex-col bg-muted/30 border-r border-border">
             {/* Bulk Action Bar / Normal Header */}
-            {multiSelectedIds.size > 1 ? (
+            {isSelectionMode ? (
                 <div className="p-3 bg-primary text-primary-foreground shadow-lg animate-in slide-in-from-top duration-300">
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                             <CheckSquare className="w-4 h-4" />
-                            <span className="text-sm font-bold">{multiSelectedIds.size} seleccionados</span>
+                            <span className="text-sm font-bold">{multiSelectedIds.size}</span>
+                        </div>
+                        <div className="flex gap-1">
+                            <button onClick={selectAll} className="text-xs underline opacity-80 hover:opacity-100">Todo</button>
+                            <span className="opacity-50">/</span>
+                            <button onClick={() => setMultiSelectedIds(new Set())} className="text-xs underline opacity-80 hover:opacity-100">Nada</button>
                         </div>
                         <button onClick={deselectAll} className="p-1 hover:bg-white/20 rounded">
                             <X className="w-4 h-4" />
@@ -171,17 +180,19 @@ export default function BlockList({
                     <div className="flex gap-2">
                         <button
                             onClick={() => handleBulkAction('bulk-merge')}
-                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white/10 hover:bg-white/20 rounded text-xs font-medium transition-colors"
+                            disabled={multiSelectedIds.size < 2}
+                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-white/10 hover:bg-white/20 rounded text-xs font-medium transition-colors disabled:opacity-50"
                             title="Fusionar seleccionados"
                         >
-                            <Merge className="w-3.5 h-3.5" /> Fusionar
+                            <Merge className="w-3.5 h-3.5" />
                         </button>
                         <button
                             onClick={() => handleBulkAction('bulk-delete')}
-                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-red-500/80 hover:bg-red-500 rounded text-xs font-medium transition-colors"
+                            disabled={multiSelectedIds.size === 0}
+                            className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-red-500/80 hover:bg-red-500 rounded text-xs font-medium transition-colors disabled:opacity-50"
                             title="Eliminar seleccionados"
                         >
-                            <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                            <Trash2 className="w-3.5 h-3.5" />
                         </button>
                     </div>
                 </div>
@@ -223,12 +234,12 @@ export default function BlockList({
                             onClick={onAddBlock}
                             className="flex-1 py-2 px-3 text-xs bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-all font-medium border border-primary/20 shadow-sm"
                         >
-                            + Añadir Bloque
+                            + Bloque
                         </button>
                         <button
-                            onClick={selectAll}
+                            onClick={() => setIsSelectionMode(true)}
                             className="px-3 py-2 text-xs bg-muted text-muted-foreground rounded-lg hover:bg-accent transition-all border border-border"
-                            title="Seleccionar todo"
+                            title="Modo Selección"
                         >
                             <CheckSquare className="w-4 h-4" />
                         </button>
@@ -255,9 +266,11 @@ export default function BlockList({
                             return (
                                 <div key={block.id} className={`relative ${indentClass}`}>
                                     <SortableBlockItem
+                                        key={block.id}
                                         block={block}
-                                        isSelected={block.id === selectedBlockId}
+                                        isSelected={selectedBlockId === block.id}
                                         isMultiSelected={multiSelectedIds.has(block.id)}
+                                        isSelectionMode={isSelectionMode}
                                         hasChildren={hasChildren}
                                         isExpanded={expandedBlockIds.has(block.id)}
                                         onClick={() => onSelectBlock(block.id)}

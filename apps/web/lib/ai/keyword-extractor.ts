@@ -1,10 +1,35 @@
 /**
  * Simula la extracción de palabras clave mediante IA (Heurística simple)
+ * STRICT ISOLATION: This logic runs purely on the provided 'content' string. 
+ * It DOES NOT access any global state, database, or other blocks.
+ * This ensures perfect isolation between documents/projects.
  */
 export function extractKeywords(content: string): string[] {
     if (!content) return [];
 
-    const ignoredWords = new Set(['el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'y', 'o', 'que', 'en', 'con', 'por', 'para', 'es', 'son', 'se', 'lo', 'no', 'si', 'a', 'al']);
+    // Listado de Stop Words en Español (Extendido)
+    const ignoredWords = new Set([
+        'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'y', 'e', 'o', 'u',
+        'a', 'ante', 'bajo', 'cabe', 'con', 'contra', 'de', 'desde', 'durante', 'en',
+        'entre', 'hacia', 'hasta', 'mediante', 'para', 'por', 'según', 'sin', 'so',
+        'sobre', 'tras', 'versus', 'vía',
+        'que', 'quien', 'donde', 'como', 'cuando', 'cual', 'cuyo',
+        'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas', 'aquel',
+        'aquella', 'aquellos', 'aquellas', 'esto', 'eso', 'aquello',
+        'mi', 'tu', 'su', 'mis', 'tus', 'sus', 'nuestro', 'nuestra',
+        'me', 'te', 'se', 'nos', 'os', 'le', 'les', 'lo', 'la',
+        'ser', 'es', 'soy', 'eres', 'somos', 'son', 'fue', 'fueron', 'era', 'eramos',
+        'estar', 'estoy', 'estas', 'esta', 'estamos', 'estan',
+        'haber', 'he', 'has', 'ha', 'hemos', 'han', 'hay',
+        'tener', 'tengo', 'tienes', 'tiene', 'tenemos', 'tienen',
+        'hacer', 'hago', 'haces', 'hace', 'hacemos', 'hacen',
+        'ir', 'voy', 'vas', 'va', 'vamos', 'van',
+        'pero', 'mas', 'sino', 'aunque', 'porque', 'pues',
+        'si', 'no', 'tambien', 'tampoco', 'muy', 'mas', 'menos',
+        'todo', 'nada', 'algo', 'algun', 'alguno', 'alguna', 'ningun', 'ninguno', 'ninguna',
+        'otro', 'otra', 'otros', 'otras'
+    ]);
+
     const keywords = new Set<string>();
 
     // 1. Palabras Capitalizadas (Proper Nouns) no al inicio de frase o después de punto
@@ -13,8 +38,11 @@ export function extractKeywords(content: string): string[] {
     const properNouns = content.match(properNounRegex);
     if (properNouns) {
         properNouns.forEach(w => {
-            if (!ignoredWords.has(w.toLowerCase()) && w.length > 2) {
-                keywords.add(w);
+            const cleanWord = w.toLowerCase().replace(/[.,;:()]/g, '');
+            if (!ignoredWords.has(cleanWord) && cleanWord.length > 2) {
+                // Remove duplicates with different casing
+                const exists = Array.from(keywords).some(k => k.toLowerCase() === cleanWord);
+                if (!exists) keywords.add(w); // Keep original casing
             }
         });
     }
@@ -23,7 +51,12 @@ export function extractKeywords(content: string): string[] {
     const quotedRegex = /"([^"]+)"/g;
     let match;
     while ((match = quotedRegex.exec(content)) !== null) {
-        if (match[1].length < 30 && match[1].length > 2) keywords.add(match[1]); // Solo frases cortas
+        if (match[1].length < 30 && match[1].length > 2) {
+            const cleanQuote = match[1].replace(/[.,;:()]/g, '');
+            if (!ignoredWords.has(cleanQuote.toLowerCase())) {
+                keywords.add(match[1]);
+            }
+        }
     }
 
     // 3. Términos específicos detectados (Simulación de vocabulario técnico del proyecto)

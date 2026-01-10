@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Document, DocumentBlock, Resource, BlockVersion } from '@docnex/shared';
-import { ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PanelLeftClose, PanelRightClose, PanelLeft, PanelRight, Eye } from 'lucide-react';
 import {
     getDocument,
     listActiveBlocks,
@@ -36,6 +36,10 @@ import NoteDetailsPanel from '@/components/notes/NoteDetailsPanel';
 import { BlockComment } from '@docnex/shared';
 import { useAutoSnapshot } from '@/hooks/useAutoSnapshot';
 import { createSnapshot, getSnapshotDescription } from '@/lib/snapshot-utils';
+import { useSplitView } from '@/hooks/useSplitView';
+import { SplitViewContainer } from '@/components/editor/SplitViewContainer';
+import { ResourceIntegratedViewer } from '@/components/resources/ResourceIntegratedViewer';
+import { LucideEye } from 'lucide-react';
 
 export default function DocumentEditorPage() {
     const params = useParams();
@@ -58,6 +62,7 @@ export default function DocumentEditorPage() {
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [rightPanelWidth, setRightPanelWidth] = useState(320);
     const [isResizing, setIsResizing] = useState(false);
+    const splitView = useSplitView();
 
     // Auto-snapshot hook
     const { isSaving: isSavingSnapshot } = useAutoSnapshot({
@@ -99,16 +104,26 @@ export default function DocumentEditorPage() {
             setDocument(doc);
 
             if (doc) {
-                const [blks, res] = await Promise.all([
-                    listActiveBlocks(documentId),
-                    listResources(doc.project_id)
-                ]);
-                setBlocks(blks);
-                setResources(res);
+                // Fetch blocks first - Critical content
+                try {
+                    const blks = await listActiveBlocks(documentId);
+                    setBlocks(blks);
 
-                // Select first block if none selected
-                if (!selectedBlockId && blks.length > 0) {
-                    setSelectedBlockId(blks[0].id);
+                    // Select first block if none selected
+                    if (blks.length > 0) {
+                        setSelectedBlockId(prev => prev || blks[0].id);
+                    }
+                } catch (blockErr) {
+                    console.error('Error loading blocks:', blockErr);
+                }
+
+                // Fetch resources separately - Non-critical (prevents full crash if DB migration missing)
+                try {
+                    const res = await listResources(doc.project_id, documentId);
+                    setResources(res);
+                } catch (resErr) {
+                    console.error('Error loading resources (Check if migration applied):', resErr);
+                    setResources([]); // Fallback to empty
                 }
             }
         } catch (err) {
@@ -116,10 +131,15 @@ export default function DocumentEditorPage() {
         } finally {
             setLoading(false);
         }
-    }, [documentId, selectedBlockId]);
+    }, [documentId]);
 
     useEffect(() => {
         if (documentId) {
+            // Clear state immediately when documentId changes to avoid showing stale data
+            setBlocks([]);
+            setResources([]);
+            setSelectedBlockId(null);
+
             loadData();
         }
     }, [documentId, loadData]);
@@ -220,14 +240,13 @@ export default function DocumentEditorPage() {
                 break;
 
             case 'delete':
-                if (confirm('Move this block to trash?')) {
-                    await softDeleteBlock(blockId);
-                    if (selectedBlockId === blockId) {
-                        const nextBlock = blocks[blockIndex + 1] || blocks[blockIndex - 1];
-                        setSelectedBlockId(nextBlock?.id || null);
-                    }
-                    await loadData();
+                // Removed annoying confirm dialog for smoother interaction. Action is reversible via trash.
+                await softDeleteBlock(blockId);
+                if (selectedBlockId === blockId) {
+                    const nextBlock = blocks[blockIndex + 1] || blocks[blockIndex - 1];
+                    setSelectedBlockId(nextBlock?.id || null);
                 }
+                await loadData();
                 break;
 
             case 'merge-prev':
@@ -268,6 +287,18 @@ export default function DocumentEditorPage() {
                         console.error('Error al crear versión del bloque:', error);
                         alert('❌ Error al guardar versión');
                     }
+                }
+                break;
+
+            case 'side-panel':
+                const blockToView = blocks.find(b => b.id === blockId);
+                if (blockToView) {
+                    splitView.openSplitView({
+                        type: 'block',
+                        id: blockToView.id,
+                        title: blockToView.title,
+                        content: blockToView.content
+                    });
                 }
                 break;
 
@@ -361,15 +392,27 @@ export default function DocumentEditorPage() {
             {/* Header */}
             <div className="h-14 border-b border-border bg-card flex items-center justify-between px-4 shrink-0">
                 <div className="flex items-center gap-4">
-                    <Link href="/documents" className="text-muted-foreground hover:text-foreground transition-colors">
+                    <Link
+                        href={document.title.startsWith('ESTRATEGIA:') ? "/settings/strategic-analysis" : "/documents"}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
                         ← Volver
                     </Link>
-                    <h1 className="font-semibold text-foreground">{document.title}</h1>
+                    <h1 className="font-semibold text-foreground">
+                        {document.title.replace('ESTRATEGIA: ', '')}
+                    </h1>
                 </div>
                 <div className="flex items-center gap-3">
+                    <Link
+                        href={`/documents/${documentId}/view`}
+                        className="text-sm font-medium text-muted-foreground hover:text-primary flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-muted transition-all"
+                    >
+                        <LucideEye className="w-4 h-4" />
+                        Vista Completa
+                    </Link>
                     <button
                         onClick={() => setShowAIWizard(true)}
-                        className="text-sm font-medium text-primary hover:opacity-90 flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-md hover:bg-primary/20 transition-all"
+                        className="text-sm font-medium text-primary hover:opacity-90 flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-md hover:bg-primary/20 transition-all font-bold"
                     >
                         ✨ AI Import
                     </button>
@@ -420,28 +463,54 @@ export default function DocumentEditorPage() {
 
                 {/* Center: Editor */}
                 <div className="flex-1 bg-background overflow-hidden flex flex-col h-full">
-                    {selectedBlock ? (
-                        <BlockContentEditor
-                            block={selectedBlock}
-                            allBlocks={blocks}
-                            resources={resources}
-                            onUpdate={loadData}
-                            onSplit={handleSplit}
-                            onCreateBlock={handleCreateBlockFromSelection}
-                            comparingItem={comparingItem}
-                            onCloseCompare={() => setComparingItem(null)}
-                            onVersionUpdated={handleDataRefresh}
-                            onNoteCreated={handleDataRefresh}
-                            refreshTrigger={refreshTrigger}
-                        />
-                    ) : (
-                        <div className="h-full flex items-center justify-center text-muted-foreground italic">
-                            {blocks.length === 0
-                                ? 'Crea un bloque para comenzar'
-                                : 'Selecciona un bloque para editar'
-                            }
-                        </div>
-                    )}
+                    <SplitViewContainer
+                        isOpen={splitView.isOpen}
+                        onClose={splitView.closeSplitView}
+                        title={splitView.content?.title}
+                        leftContent={
+                            selectedBlock ? (
+                                <BlockContentEditor
+                                    block={selectedBlock}
+                                    allBlocks={blocks}
+                                    resources={resources}
+                                    onUpdate={loadData}
+                                    onSplit={handleSplit}
+                                    onCreateBlock={handleCreateBlockFromSelection}
+                                    comparingItem={comparingItem}
+                                    onCloseCompare={() => setComparingItem(null)}
+                                    onVersionUpdated={handleDataRefresh}
+                                    onNoteCreated={handleDataRefresh}
+                                    onOpenSidePanel={(content) => {
+                                        splitView.openSplitView(content);
+                                    }}
+                                    refreshTrigger={refreshTrigger}
+                                />
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-muted-foreground italic">
+                                    {blocks.length === 0
+                                        ? 'Crea un bloque para comenzar'
+                                        : 'Selecciona un bloque para editar'
+                                    }
+                                </div>
+                            )
+                        }
+                        rightContent={
+                            <div className="h-full">
+                                {splitView.content?.type === 'block' && (
+                                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                                        <h2 className="text-xl font-bold mb-4">{splitView.content.title}</h2>
+                                        <div dangerouslySetInnerHTML={{ __html: splitView.content.content || '' }} />
+                                    </div>
+                                )}
+                                {splitView.content?.type === 'resource' && (
+                                    <ResourceIntegratedViewer
+                                        resourceId={splitView.content.id || ''}
+                                        title={splitView.content.title || ''}
+                                    />
+                                )}
+                            </div>
+                        }
+                    />
                 </div>
 
                 {/* Right: Side Panel with sections */}
@@ -491,16 +560,31 @@ export default function DocumentEditorPage() {
                                     <SupportDocumentsSection
                                         projectId={document.project_id}
                                         activeBlockId={selectedBlockId || undefined}
-                                        onCompare={handleCompare}
+                                        onCompare={(block) => {
+                                            splitView.openSplitView({
+                                                type: 'block',
+                                                id: block.id,
+                                                title: block.title,
+                                                content: block.content
+                                            });
+                                        }}
                                     />
                                 </Section>
 
                                 <Section title="Recursos" icon="📎" count={resources.length}>
                                     <ResourcesSection
                                         projectId={document.project_id}
+                                        documentId={documentId} // Pass documentId context
                                         resources={resources}
                                         onResourcesChange={loadData}
                                         onLinkResource={handleLinkResource} // Kept this from original
+                                        onOpenResource={(res) => {
+                                            splitView.openSplitView({
+                                                type: 'resource',
+                                                id: res.id,
+                                                title: res.title
+                                            });
+                                        }}
                                     />
                                 </Section>
 

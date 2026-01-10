@@ -25,14 +25,22 @@ export const getActiveProject = async (): Promise<Project | null> => {
 
 // Documents
 export const listDocuments = async (projectId: string, category: string = 'main'): Promise<Document[]> => {
-    const { data, error } = await supabase
+    // Fetch all docs for this category
+    let query = supabase
         .from('documents')
         .select('*')
         .eq('project_id', projectId)
         .eq('category', category)
         .order('updated_at', { ascending: false });
 
-    if (error) throw error;
+    console.log(`[API] listDocuments calling supabase for project ${projectId} category ${category}`);
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('[API] listDocuments Supabase Error:', JSON.stringify(error, null, 2));
+        throw error;
+    }
+
     return data || [];
 };
 
@@ -42,18 +50,27 @@ export const getDocument = async (id: string): Promise<Document | null> => {
         .select('*')
         .eq('id', id)
         .single();
-    if (error) throw error;
+    if (error) {
+        console.error('[API] getDocument Error:', error);
+        throw error;
+    }
     return data;
 }
 
 export const createDocument = async (projectId: string, title: string, category: string = 'main'): Promise<Document | null> => {
+    const row: any = { project_id: projectId, title, category };
+
+    console.log('[API] createDocument inserting:', row);
     const { data, error } = await supabase
         .from('documents')
-        .insert([{ project_id: projectId, title, category }])
+        .insert([row])
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[API] createDocument Error details:', JSON.stringify(error, null, 2));
+        throw error;
+    }
     return data;
 };
 
@@ -68,6 +85,54 @@ export const updateDocument = async (id: string, updates: Partial<Document>): Pr
     return data;
 }
 
+export const deleteDocument = async (id: string): Promise<void> => {
+    // Hard delete for now, or check requirements. User asked for "eliminarlos" AND "archivarlos".
+    // Usually "eliminarlos" means delete.
+    const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+}
+
+export const archiveDocument = async (id: string): Promise<Document | null> => {
+    return updateDocument(id, { status: 'archived' });
+}
+
+export const duplicateDocument = async (id: string, newTitle?: string): Promise<Document | null> => {
+    // 1. Get original doc
+    const original = await getDocument(id);
+    if (!original) throw new Error("Document not found");
+
+    // 2. Create new doc
+    const created = await createDocument(original.project_id, newTitle || `${original.title} (Copy)`, original.category);
+    if (!created) throw new Error("Failed to create duplication");
+
+    // 3. Get blocks
+    const blocks = await listBlocks(id);
+
+    // 4. Duplicate blocks
+    if (blocks.length > 0) {
+        const blocksToInsert = blocks.map(b => ({
+            document_id: created.id,
+            content: b.content,
+            title: b.title,
+            order_index: b.order_index,
+            tags: b.tags,
+            block_type: b.block_type || 'text'
+        }));
+
+        const { error: blocksError } = await supabase
+            .from('document_blocks')
+            .insert(blocksToInsert);
+
+        if (blocksError) console.error("Error duplicating blocks", blocksError);
+    }
+
+    return created;
+}
+
+
 
 // Blocks
 export const listBlocks = async (documentId: string): Promise<DocumentBlock[]> => {
@@ -76,6 +141,24 @@ export const listBlocks = async (documentId: string): Promise<DocumentBlock[]> =
         .select('*')
         .eq('document_id', documentId)
         .order('order_index', { ascending: true }); // Make sure to use order_index
+
+    if (error) throw error;
+    return data || [];
+};
+
+/**
+ * Special list for the Full View that includes related metadata
+ */
+export const listBlocksForViewer = async (documentId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+        .from('document_blocks')
+        .select(`
+            *,
+            block_versions(id, version_number, title, created_at),
+            block_resource_links(id, resource_id, resource:resources(title, kind))
+        `)
+        .eq('document_id', documentId)
+        .order('order_index', { ascending: true });
 
     if (error) throw error;
     return data || [];
@@ -90,15 +173,18 @@ import { extractKeywords } from './ai/keyword-extractor';
 export const createBlock = async (documentId: string, content: string, orderIndex: number, title: string = 'New Block', tags?: string[]): Promise<DocumentBlock | null> => {
     // Auto-generate tags if not provided, or merge? 
     // For now, if tags is undefined, we generate.
-    const finalTags = tags !== undefined ? tags : extractKeywords(content);
+    // console.log(`[API] createBlock inserting block for doc ${documentId}. Tags:`, finalTags);
 
     const { data, error } = await supabase
         .from('document_blocks')
-        .insert([{ document_id: documentId, content, order_index: orderIndex, title, tags: finalTags }]) // Added title and tags
+        .insert([{ document_id: documentId, content, order_index: orderIndex, title: title || 'New Block', is_deleted: false }]) // Added title back as it is REQUIRED
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[API] createBlock Error details:', JSON.stringify(error, null, 2));
+        throw error;
+    }
     return data;
 };
 
@@ -133,25 +219,41 @@ export const getBlock = async (blockId: string): Promise<DocumentBlock> => {
 };
 
 // Resources
-export const listResources = async (projectId: string): Promise<Resource[]> => {
+// Resources
+export const createResource = async (projectId: string, title: string, kind: 'pdf' | 'docx' | 'url' | 'other', meta?: any, documentId?: string) => {
     const { data, error } = await supabase
+        .from('resources')
+        .insert([{
+            project_id: projectId,
+            document_id: documentId,
+            title,
+            kind,
+            meta: meta || {},
+            created_at: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
+export const listResources = async (projectId: string, documentId?: string) => {
+    let query = supabase
         .from('resources')
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
-}
 
-export const createResource = async (projectId: string, title: string, kind: string, meta: Record<string, unknown> = {}): Promise<Resource | null> => {
-    const { data, error } = await supabase
-        .from('resources')
-        .insert([{ project_id: projectId, title, kind, meta }])
-        .select()
-        .single();
+    // Enforce Strict Isolation if documentId is provided
+    if (documentId) {
+        query = query.eq('document_id', documentId);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     return data;
-}
+};
 
 // Links
 export const listBlockLinks = async (blockId: string): Promise<BlockResourceLink[]> => {
@@ -223,14 +325,28 @@ export const deleteResource = async (id: string): Promise<void> => {
     if (error) throw error;
 };
 
-// Document delete
-export const deleteDocument = async (id: string): Promise<void> => {
-    const { error } = await supabase
-        .from('documents')
-        .delete()
-        .eq('id', id);
+/**
+ * Fetch the actual content of a resource (for integrated viewer)
+ */
+export const fetchResourceContent = async (id: string): Promise<{ content: string, type: string }> => {
+    const { data, error } = await supabase
+        .from('resources')
+        .select('title, kind, file_path, meta')
+        .eq('id', id)
+        .single();
+
     if (error) throw error;
+
+    // For now, if it's a 'text' kind or has content in meta, return it.
+    // In a real app, this might fetch from storage or a specific table.
+    return {
+        content: data.meta?.content || `Contenido de ejemplo para: ${data.title}`,
+        type: data.kind
+    };
 };
+
+// Document delete
+
 
 // ============================================================
 // SPRINT 2: Enhanced Block Operations

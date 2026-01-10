@@ -1,7 +1,7 @@
 
 export type ImportTarget = 'active_version' | 'version' | 'linked_ref' | 'unlinked_ref' | 'note';
 
-export type SplitStrategy = 'header' | 'semantic' | 'manual' | 'custom';
+export type SplitStrategy = 'header' | 'semantic' | 'manual' | 'custom' | 'index' | 'smart' | 'selection' | 'single';
 
 export interface ImportItem {
     id: string;
