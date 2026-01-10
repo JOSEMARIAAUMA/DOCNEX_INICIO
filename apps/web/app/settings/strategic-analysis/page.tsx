@@ -308,6 +308,61 @@ const STRATEGIC_ANALYSIS_V4 = `
 <p><em>Este plan ha sido generado por Antigravity tras el análisis profundo de arquitecturas cognitivas adaptativas.</em></p>
 `;
 
+const STRATEGIC_ANALYSIS_V5 = `
+<div class="p-8 bg-gradient-to-br from-amber-900/40 to-orange-900/40 rounded-3xl border border-white/10 backdrop-blur-xl shadow-2xl overflow-hidden">
+  <div class="flex items-center gap-4 mb-8">
+    <div class="w-16 h-16 rounded-2xl bg-amber-500/20 flex items-center justify-center border border-amber-500/30">
+      <svg class="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18 18.247 18.477 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+    </div>
+    <div>
+      <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 uppercase tracking-tighter">La Casa del Bibliotecario</h1>
+      <p class="text-amber-200/60 font-medium">Repositorio Normativo Global e Inteligencia Cruzada</p>
+    </div>
+  </div>
+
+  <div class="space-y-8">
+    <section class="p-6 bg-white/5 rounded-2xl border border-white/10">
+      <h2 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span class="w-2 h-6 bg-amber-500 rounded-full"></span> 1. Visión: El Repositorio Maestro
+      </h2>
+      <p class="text-amber-100/80 leading-relaxed">
+        Hemos trascendido la gestión de archivos locales. <strong>La Librería</strong> actúa como la memoria central de DOCNEX. No solo almacena leyes, sino que acumula la <strong>experiencia colectiva</strong> de cómo esas leyes han sido aplicadas, contradichas o simplificadas en proyectos reales.
+      </p>
+    </section>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="p-4 bg-amber-500/10 rounded-xl border border-amber-500/20">
+        <h3 class="font-bold text-amber-300 mb-2 font-black uppercase tracking-widest text-[10px]">Topología Maestría</h3>
+        <p class="text-xs text-amber-200/60 leading-relaxed">Mapeo 3D de relaciones normativas. Permite visualizar qué leyes anclan a otras y detectar colisiones jerárquicas de un vistazo.</p>
+      </div>
+      <div class="p-4 bg-orange-500/10 rounded-xl border border-orange-500/20">
+        <h3 class="font-bold text-orange-300 mb-2 font-black uppercase tracking-widest text-[10px]">Agentes de Perfil</h3>
+        <p class="text-xs text-orange-200/60 leading-relaxed">Activación dinámica de especialistas (Legal, Arquitecto, Economista) según la temática detectada por la IA.</p>
+      </div>
+    </div>
+
+    <section class="p-6 bg-gradient-to-r from-amber-500/10 to-transparent rounded-2xl border border-white/5">
+      <h2 class="text-xl font-bold text-white mb-4">Capa de Experiencia (Knowledge Tree)</h2>
+      <p class="text-sm text-amber-200/70 mb-4 leading-relaxed">
+        Cada bloque normativo ahora tiene un "linaje de aplicación". Si una ley falló en un proyecto anterior, el <strong>Analista AI</strong> te lo advertirá en el chat antes de que cometas el mismo error.
+      </p>
+      <div class="flex gap-3">
+        <span class="px-3 py-1 bg-amber-500/20 text-amber-400 text-[10px] font-black rounded-full border border-amber-500/30 tracking-widest uppercase">Cross-Project Learning</span>
+        <span class="px-3 py-1 bg-white/5 text-amber-200/40 text-[10px] font-black rounded-full border border-white/10 tracking-widest uppercase">Semantic GraphRAG</span>
+      </div>
+    </section>
+
+    <div class="pt-4 border-t border-white/10 flex justify-between items-center">
+      <span class="text-[10px] text-white/20 font-mono">LIBRARIAN_CORE_ALPHA v1.0</span>
+      <div class="flex items-center gap-2">
+        <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+        <span class="text-green-400 text-[10px] font-bold uppercase tracking-widest">Sincronizado</span>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
 
 export default function StrategicAnalysisPage() {
 
@@ -423,6 +478,17 @@ export default function StrategicAnalysisPage() {
                 }
             } catch (err) {
                 console.error("Error creating Multi-Agent Plan:", err);
+            }
+
+            // 5. Library Strategy
+            try {
+                const doc5 = await createDocument(projectId, 'ESTRATEGIA: Repositorio Normativo (La Casa del Bibliotecario)', 'main');
+                if (doc5) {
+                    console.log("Doc 5 created, adding block...");
+                    await createBlock(doc5.id, STRATEGIC_ANALYSIS_V5, 0, 'Contenido Completo');
+                }
+            } catch (err) {
+                console.error("Error creating Library Strategy:", err);
             }
 
             await loadDocuments();
