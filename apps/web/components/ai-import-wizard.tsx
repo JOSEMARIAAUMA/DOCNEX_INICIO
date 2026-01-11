@@ -83,28 +83,58 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
         }
     };
 
-    const renderBlockTree = (items: ImportBlock[]) => {
+    // Recursive function to update block title at any depth
+    const updateBlockTitle = (blockId: string, newTitle: string, items: ImportBlock[]): ImportBlock[] => {
+        return items.map(block => {
+            if (block.id === blockId) {
+                return { ...block, title: newTitle };
+            }
+            if (block.children && block.children.length > 0) {
+                return { ...block, children: updateBlockTitle(blockId, newTitle, block.children) };
+            }
+            return block;
+        });
+    };
+
+    // Level colors and labels for hierarchy visualization
+    const LEVEL_COLORS = ['bg-amber-500/10 border-amber-500/30', 'bg-cyan-500/10 border-cyan-500/30', 'bg-purple-500/10 border-purple-500/30'];
+    const LEVEL_LABELS = ['TÍTULO', 'CAPÍTULO', 'ARTÍCULO'];
+
+    const renderBlockTree = (items: ImportBlock[], level = 0): React.ReactNode => {
         return (
             <div className="space-y-2">
                 {items.map(block => (
-                    <div key={block.id} className="border border-border rounded-lg p-3 bg-card hover:border-primary/50 transition-colors">
+                    <div
+                        key={block.id}
+                        className={`border rounded-lg p-3 ${LEVEL_COLORS[level] || 'bg-card border-border'} hover:border-primary/50 transition-colors`}
+                        style={{ marginLeft: `${level * 16}px` }}
+                    >
                         <div className="flex items-center gap-2">
-                            <div className="p-1 bg-primary/10 text-primary rounded">
+                            <div className={`p-1 rounded ${level === 0 ? 'bg-amber-500/20 text-amber-500' : level === 1 ? 'bg-cyan-500/20 text-cyan-500' : 'bg-purple-500/20 text-purple-500'}`}>
                                 <FileText className="w-4 h-4" />
                             </div>
                             <input
                                 value={block.title}
                                 onChange={(e) => {
-                                    const newBlocks = blocks.map(b => b.id === block.id ? { ...b, title: e.target.value } : b);
+                                    const newBlocks = updateBlockTitle(block.id, e.target.value, blocks);
                                     setBlocks(newBlocks);
                                 }}
                                 className="bg-transparent font-bold text-sm focus:outline-none flex-1"
                             />
-                            <div className="text-[10px] uppercase bg-muted px-2 py-0.5 rounded text-muted-foreground">{block.type}</div>
+                            <div className={`text-[10px] uppercase px-2 py-0.5 rounded font-medium ${level === 0 ? 'bg-amber-500/20 text-amber-600' : level === 1 ? 'bg-cyan-500/20 text-cyan-600' : 'bg-purple-500/20 text-purple-600'}`}>
+                                {LEVEL_LABELS[level] || block.type}
+                            </div>
                         </div>
                         <div className="mt-2 text-xs text-muted-foreground line-clamp-2 pl-7 border-l-2 border-border ml-2">
-                            <div dangerouslySetInnerHTML={{ __html: block.content }} />
+                            <div dangerouslySetInnerHTML={{ __html: block.content.slice(0, 200) + (block.content.length > 200 ? '...' : '') }} />
                         </div>
+
+                        {/* Render children recursively (up to 3 levels) */}
+                        {block.children && block.children.length > 0 && level < 2 && (
+                            <div className="mt-3">
+                                {renderBlockTree(block.children, level + 1)}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>

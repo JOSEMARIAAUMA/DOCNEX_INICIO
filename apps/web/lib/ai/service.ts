@@ -222,6 +222,40 @@ INSTRUCTIONS:
         );
     }
 
+    /**
+     * Cross-references official regulatory updates with existing library resources
+     */
+    async checkRegulatoryUpdates(libraryTitles: string[], officialUpdates: any[]): Promise<{
+        updates: Array<{
+            official_title: string;
+            affected_resource_title: string;
+            reason: string;
+            risk_level: 'high' | 'medium' | 'low';
+        }>
+    }> {
+        const schema = `{
+            "updates": [{
+                "official_title": "string",
+                "affected_resource_title": "string",
+                "reason": "string (Why is it affected? Derogation, conflict, etc.)",
+                "risk_level": "high | medium | low"
+            }]
+        }`;
+
+        const context = `
+            Library context (Existing laws): ${libraryTitles.join(', ')}
+            Official daily summary: ${JSON.stringify(officialUpdates)}
+        `;
+
+        return await this.generateObject(
+            context,
+            schema,
+            `Acting as a Senior Regulatory Sentinel, compare the official daily summary with our library. 
+             Identify which existing laws are affected by these new publications or modifications. 
+             Focus on derogations and direct conflicts.`
+        );
+    }
+
     private getProfilePrompt(profile: SpecializedProfile): string {
         const prompts: Record<SpecializedProfile, string> = {
             legal: "You are a specialized Legal Counsel in Urban Law. Focus on mandates, legality, deadlines, and hierarchical consistency.",

@@ -6,6 +6,7 @@ import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
 import { DocumentBlock, Resource } from '@docnex/shared';
 import { Wand2, X } from 'lucide-react';
+import { decodeHtmlEntities } from '@/lib/text-utils';
 
 // Safe Dynamic Import
 const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), {
@@ -50,23 +51,79 @@ export default function SemanticGraph({
     height
 }: SemanticGraphProps) {
     const graphRef = useRef<any>(null);
-    const [fogNear, setFogNear] = useState(50);
-    const [fogFar, setFogFar] = useState(2000);
-    const [fogIntensity, setFogIntensity] = useState(0.4);
+    const [fogNear, setFogNear] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('graph-atmosphere-v2');
+            if (saved) {
+                try { return JSON.parse(saved).near || 50; } catch (e) { }
+            }
+        }
+        return 50;
+    });
+
+    const [fogFar, setFogFar] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('graph-atmosphere-v2');
+            if (saved) {
+                try { return JSON.parse(saved).far || 2000; } catch (e) { }
+            }
+        }
+        return 2000;
+    });
+
+    const [fogIntensity, setFogIntensity] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('graph-atmosphere-v2');
+            if (saved) {
+                try { return JSON.parse(saved).intensity ?? 0.4; } catch (e) { }
+            }
+        }
+        return 0.4;
+    });
+
+    const [nodeScale, setNodeScale] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('graph-atmosphere-v2');
+            if (saved) {
+                try { return JSON.parse(saved).nodeScale || 1.0; } catch (e) { }
+            }
+        }
+        return 1.0;
+    });
+
+    const [nodeDistortion, setNodeDistortion] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('graph-atmosphere-v2');
+            if (saved) {
+                try { return JSON.parse(saved).nodeDistortion || 1.0; } catch (e) { }
+            }
+        }
+        return 1.0;
+    });
+    const [textScale, setTextScale] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('graph-atmosphere-v2');
+            if (saved) {
+                try { return JSON.parse(saved).textScale || 1.0; } catch (e) { }
+            }
+        }
+        return 1.0;
+    });
     const [showControls, setShowControls] = useState(false);
 
-    // Persistence: Load settings
+    // Persistence: load effect is now handled by initializers for faster sync
     useEffect(() => {
         const saved = localStorage.getItem('graph-atmosphere-v2');
         if (saved) {
             try {
-                const { near, far, intensity } = JSON.parse(saved);
-                setFogNear(near);
-                setFogFar(far);
-                setFogIntensity(intensity);
-            } catch (e) {
-                console.error('Failed to load graph settings', e);
-            }
+                const { near, far, intensity, nodeScale: ns, nodeDistortion: nd, textScale: ts } = JSON.parse(saved);
+                if (near !== undefined) setFogNear(near);
+                if (far !== undefined) setFogFar(far);
+                if (intensity !== undefined) setFogIntensity(intensity);
+                if (ns !== undefined) setNodeScale(ns);
+                if (nd !== undefined) setNodeDistortion(nd);
+                if (ts !== undefined) setTextScale(ts);
+            } catch (e) { }
         }
     }, []);
 
@@ -75,9 +132,12 @@ export default function SemanticGraph({
         localStorage.setItem('graph-atmosphere-v2', JSON.stringify({
             near: fogNear,
             far: fogFar,
-            intensity: fogIntensity
+            intensity: fogIntensity,
+            nodeScale,
+            nodeDistortion,
+            textScale
         }));
-    }, [fogNear, fogFar, fogIntensity]);
+    }, [fogNear, fogFar, fogIntensity, nodeScale, nodeDistortion, textScale]);
 
     // Apply fog and lights to the scene
     useEffect(() => {
@@ -115,19 +175,40 @@ export default function SemanticGraph({
 
         // Blocks & Sub-blocks
         blocks.forEach((block, idx) => {
-            const isSubBlock = !!block.parent_block_id;
+            // Calculate hierarchy level
+            let level = 0;
+            let currentParentId = block.parent_block_id;
+            while (currentParentId) {
+                level++;
+                const parent = blocks.find(b => b.id === currentParentId);
+                if (!parent) break;
+                currentParentId = parent.parent_block_id;
+            }
+
+            // Power-based Scale and Distortion formula for maximum visual impact
+            const baseUnit = 2;
+            const distortedVal = (baseUnit * nodeScale) * Math.pow(nodeDistortion, (2 - level));
+
+            // EXPLICIT COLOR MAPPING to match editor hierarchy perfectly
+            // Level 0 (TÍTULO) -> Ocre/Amber
+            // Level 1 (CAPÍTULO) -> Cyan
+            // Level 2+ (ARTÍCULO) -> Emerald
+            let nodeColor = '#f59e0b'; // Amber
+            if (level === 1) nodeColor = '#06b6d4'; // Cyan
+            if (level >= 2) nodeColor = '#10b981'; // Emerald
+
             nodes.push({
                 id: block.id,
-                name: block.title || `Bloque ${idx + 1}`,
-                type: isSubBlock ? 'sub-block' : 'block',
-                val: isSubBlock ? 4 : 8,
-                color: isSubBlock ? '#7dd3fc' : '#d4ae7b', // Crystal Cyan for sub-blocks, Ochre for main
+                name: decodeHtmlEntities(block.title) || `Bloque ${idx + 1}`,
+                type: level === 0 ? 'block' : 'sub-block',
+                val: Math.max(0.5, distortedVal),
+                color: nodeColor,
                 parentId: block.parent_block_id,
                 description: block.content ? block.content.substring(0, 100) + '...' : ''
             });
 
             // If it has a parent, create a structural hierarchy link
-            if (isSubBlock) {
+            if (block.parent_block_id) {
                 links.push({
                     source: block.parent_block_id!,
                     target: block.id,
@@ -188,7 +269,7 @@ export default function SemanticGraph({
         });
 
         return { nodes, links };
-    }, [blocks, resources, semanticLinks, notes]);
+    }, [blocks, resources, semanticLinks, notes, nodeScale, nodeDistortion]);
 
     // Auto-fit effect
     useEffect(() => {
@@ -205,15 +286,7 @@ export default function SemanticGraph({
         const obj = new THREE.Group();
 
         // Sphere - Scale based on type and importance
-        let radius = 2.0;
-        switch (node.type) {
-            case 'block': radius = 3.5; break;
-            case 'sub-block': radius = 2.2; break;
-            case 'resource': radius = 2.5; break;
-            case 'user-note':
-            case 'ai-note': radius = 0.8; break;
-        }
-
+        let radius = node.val / 2;
         const geometry = new THREE.SphereGeometry(radius, 32, 32);
         const material = new THREE.MeshStandardMaterial({
             color: node.color,
@@ -229,7 +302,8 @@ export default function SemanticGraph({
         if (node.type !== 'user-note' && node.type !== 'ai-note') {
             const sprite = new SpriteText(node.name);
             sprite.color = '#ffffff';
-            sprite.textHeight = node.type === 'block' ? 1.8 : 1.4;
+            const baseHeight = node.type === 'block' ? 1.8 : 1.4;
+            sprite.textHeight = baseHeight * textScale;
             sprite.fontWeight = '500';
             sprite.padding = 0;
             sprite.backgroundColor = 'rgba(0,0,0,0.6)';
@@ -239,7 +313,7 @@ export default function SemanticGraph({
         }
 
         return obj;
-    }, []);
+    }, [nodeScale, nodeDistortion, textScale]);
 
     const handleNodeClick = useCallback((node: any) => {
         // Aim at node from outside
@@ -302,11 +376,59 @@ export default function SemanticGraph({
                         />
                     </div>
 
+                    <div className="w-[1px] h-12 bg-white/5" />
+
+                    <div className="flex flex-col gap-2.5">
+                        <div className="flex justify-between items-end min-w-[140px]">
+                            <span className="text-[10px] font-black text-[#d4ae7b] uppercase tracking-[0.25em]">Escala</span>
+                            <span className="text-[11px] tabular-nums text-[#d4ae7b]/70 font-bold">{Math.round(nodeScale * 100)}%</span>
+                        </div>
+                        <input
+                            type="range" min="0.2" max="3" step="0.1"
+                            value={nodeScale}
+                            onChange={(e) => setNodeScale(parseFloat(e.target.value))}
+                            className="w-40 h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d4ae7b] hover:bg-white/10 transition-colors"
+                        />
+                    </div>
+
+                    <div className="w-[1px] h-12 bg-white/5" />
+
+                    <div className="flex flex-col gap-2.5">
+                        <div className="flex justify-between items-end min-w-[140px]">
+                            <span className="text-[10px] font-black text-[#d4ae7b] uppercase tracking-[0.25em]">Jerarquía</span>
+                            <span className="text-[11px] tabular-nums text-[#d4ae7b]/70 font-bold">{nodeDistortion.toFixed(1)}x</span>
+                        </div>
+                        <input
+                            type="range" min="0.5" max="4" step="0.1"
+                            value={nodeDistortion}
+                            onChange={(e) => setNodeDistortion(parseFloat(e.target.value))}
+                            className="w-40 h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d4ae7b] hover:bg-white/10 transition-colors"
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                        <div className="flex justify-between items-end min-w-[140px]">
+                            <span className="text-[10px] font-black text-[#d4ae7b] uppercase tracking-[0.25em]">Etiquetas</span>
+                            <span className="text-[11px] tabular-nums text-[#d4ae7b]/70 font-bold">{Math.round(textScale * 100)}%</span>
+                        </div>
+                        <input
+                            type="range" min="0.2" max="4" step="0.1"
+                            value={textScale}
+                            onChange={(e) => setTextScale(parseFloat(e.target.value))}
+                            className="w-40 h-1.5 bg-white/5 rounded-full appearance-none cursor-pointer accent-[#d4ae7b] hover:bg-white/10 transition-colors"
+                        />
+                    </div>
+
+                    <div className="w-[1px] h-12 bg-white/5" />
+
                     <button
                         onClick={() => {
                             setFogNear(150);
                             setFogFar(2000);
                             setFogIntensity(0.4);
+                            setNodeScale(1.0);
+                            setNodeDistortion(1.0);
+                            setTextScale(1.0);
                         }}
                         className="ml-6 p-4 bg-[#d4ae7b]/5 hover:bg-[#d4ae7b]/20 rounded-2xl text-[#d4ae7b]/40 hover:text-[#d4ae7b] transition-all group border border-white/5"
                         title="Calibración Sistémica"
@@ -319,15 +441,15 @@ export default function SemanticGraph({
             <div className="absolute bottom-6 left-8 z-20 pointer-events-none flex flex-wrap gap-x-8 gap-y-2 max-w-[600px]">
                 <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full bg-[#d4ae7b]" />
-                    <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Bloque Maestro</span>
+                    <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Nivel 1 (Título)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-[#e5c08d]" />
-                    <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Sub-Bloque</span>
+                    <div className="w-2 h-2 rounded-full bg-[#06b6d4]" />
+                    <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Nivel 2 (Capítulo)</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-blue-400" />
-                    <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Recurso</span>
+                    <div className="w-2 h-2 rounded-full bg-[#10b981]" />
+                    <span className="text-[9px] font-bold text-white/60 uppercase tracking-widest">Nivel 3 (Artículo)</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-[#fbbf24]" />
@@ -340,7 +462,7 @@ export default function SemanticGraph({
             </div>
 
             <ForceGraph3D
-                key={`graph-${data.nodes.length}`}
+                key={`graph-${data.nodes.length}-${nodeScale}-${nodeDistortion}-${textScale}`}
                 ref={graphRef}
                 graphData={data}
                 width={width}

@@ -41,23 +41,72 @@ export class LibrarianAgent {
 
     /**
      * Nodo 1: Analizar Estructura y Sugerir División
+     * Especializado en normativa oficial con estructura TÍTULO/CAPÍTULO/ARTÍCULO
      */
     private async analyzeAndSplit(state: LibrarianStateType) {
-        const prompt = `Actúa como un Bibliotecario y Arquitecto de Información experto.
-Tu tarea es dividir el siguiente texto en bloques lógicos y jerárquicos.
+        const prompt = `Actúa como un Bibliotecario y Arquitecto de Información experto especializado en NORMATIVA OFICIAL.
+Tu tarea es dividir el siguiente texto en bloques lógicos con una JERARQUÍA DE 3 NIVELES.
 
-CRITERIOS DE DIVISIÓN APRENDIDOS:
-${state.criteria || "No hay criterios previos. Usa tu mejor juicio profesional para detectar títulos, capítulos y secciones."}
+## DETECCIÓN DE NORMATIVA OFICIAL
+Si el documento es una norma jurídica (Decreto, Ley, Orden, Reglamento, Real Decreto):
 
-TEXTO A PROCESAR:
+**NIVEL 0 (Raíz) - TÍTULOS:**
+- Identificar con: "TITULO I", "TITULO II", "TITULO PRELIMINAR"...
+- hierarchy_level: 0
+
+**NIVEL 1 - CAPÍTULOS:**
+- Identificar con: "CAPITULO 1", "CAPITULO I", "CAPITULO PRIMERO"...
+- hierarchy_level: 1
+- Van DENTRO de un TÍTULO (como children)
+
+**NIVEL 2 - ARTÍCULOS:**
+- Identificar con: "ARTICULO 1", "ARTICULO 14", "Art. 3"...
+- hierarchy_level: 2
+- Van DENTRO de un CAPÍTULO (como children)
+
+## REGLA CRÍTICA: TÍTULOS CORTOS
+Los títulos de bloques deben ser CORTOS (máximo 20 caracteres) usando SOLO el identificador.
+- ✅ CORRECTO: "TITULO I", "CAPITULO 3", "ARTICULO 14"
+- ❌ INCORRECTO: "TITULO I - DISPOSICIONES GENERALES Y ÁMBITO DE APLICACIÓN"
+
+El contenido completo del encabezado (incluyendo la descripción larga) va en el campo "content".
+
+## CRITERIOS DE DIVISIÓN APRENDIDOS:
+${state.criteria || "No hay criterios previos. Usa tu mejor juicio profesional para detectar la estructura legal."}
+
+## TEXTO A PROCESAR:
 ${state.text.slice(0, 30000)}
 
-REGLAS:
-1. Respeta el formato original del contenido.
-2. Identifica la jerarquía (Padres e Hijos si aplica).
-3. Devuelve un JSON con la estructura: { blocks: [{ title: string, content: string, target: string, children: [] }] }
+## FORMATO DE RESPUESTA (JSON):
+{
+  "blocks": [
+    {
+      "title": "TITULO I",
+      "content": "TITULO I. DISPOSICIONES GENERALES\\n...",
+      "target": "active_version",
+      "hierarchy_level": 0,
+      "children": [
+        {
+          "title": "CAPITULO 1",
+          "content": "CAPITULO 1. Del ámbito de aplicación\\n...",
+          "target": "active_version",
+          "hierarchy_level": 1,
+          "children": [
+            {
+              "title": "ARTICULO 1",
+              "content": "Artículo 1. Objeto.\\nLa presente ley...",
+              "target": "active_version",
+              "hierarchy_level": 2,
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
 
-Responde SOLO con el JSON.`;
+Responde SOLO con el JSON válido.`;
 
         try {
             const response = await this.model.invoke(prompt);
@@ -67,7 +116,7 @@ Responde SOLO con el JSON.`;
             if (!jsonMatch) throw new Error("No se pudo extraer JSON de la respuesta del bibliotecario");
 
             const result = JSON.parse(jsonMatch[0]);
-            console.log(`[Bibliotecario] Propuesta generada (${result.blocks?.length} bloques)`);
+            console.log(`[Bibliotecario] Propuesta generada (${result.blocks?.length} bloques de nivel 0)`);
             return { proposedBlocks: result.blocks, iterations: (state.iterations || 0) + 1 };
         } catch (e: any) {
             console.error("[Bibliotecario] Error parseando JSON:", e.message);

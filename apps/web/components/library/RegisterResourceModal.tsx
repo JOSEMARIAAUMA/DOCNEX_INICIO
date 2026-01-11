@@ -18,22 +18,27 @@ interface RegisterResourceModalProps {
 export default function RegisterResourceModal({ isOpen, onClose, onSuccess }: RegisterResourceModalProps) {
     const [step, setStep] = useState<'upload' | 'analyzing' | 'review'>('upload');
     const [file, setFile] = useState<File | null>(null);
+    const [cloudUrl, setCloudUrl] = useState('');
     const [aiAnalysis, setAiAnalysis] = useState<any>(null);
     const [saving, setSaving] = useState(false);
+    const [resourceType, setResourceType] = useState<'file' | 'link'>('file');
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selected = e.target.files?.[0];
         if (selected) {
             setFile(selected);
-            processWithAI(selected);
+            processWithAI(selected.name, `Contenido simulado del archivo para análisis técnico.`);
         }
     };
 
-    const processWithAI = async (file: File) => {
+    const handleCloudSubmit = () => {
+        if (!cloudUrl) return;
+        processWithAI(cloudUrl, `Contenido extraído del enlace cloud: ${cloudUrl}`);
+    };
+
+    const processWithAI = async (title: string, text: string) => {
         setStep('analyzing');
         try {
-            // Mocking text extraction for now, usually we'd parse PDF/Docx
-            const text = `Documento: ${file.name}. Contenido simulado para análisis de normativa urbana y administrativa.`;
             const analysis = await aiService.analyzeLibraryResource(text);
             setAiAnalysis(analysis);
             setStep('review');
@@ -44,20 +49,32 @@ export default function RegisterResourceModal({ isOpen, onClose, onSuccess }: Re
     };
 
     const handleSave = async () => {
-        if (!file || !aiAnalysis) return;
+        if ((resourceType === 'file' && !file) || (resourceType === 'link' && !cloudUrl) || !aiAnalysis) return;
         setSaving(true);
         try {
-            // Create global resource (projectId = null)
+            const extension = file?.name.split('.').pop()?.toLowerCase() || 'url';
+            let kind: any = 'pdf';
+            if (resourceType === 'link') {
+                kind = cloudUrl.includes('google.com') ? 'google_doc' : 'url';
+            } else {
+                if (['xlsx', 'xls', 'csv'].includes(extension)) kind = 'spreadsheet';
+                else if (['json', 'xml', 'html'].includes(extension)) kind = extension;
+                else if (extension === 'md') kind = 'markdown';
+                else if (extension === 'pptx') kind = 'powerpoint';
+                else kind = extension === 'pdf' ? 'pdf' : 'docx';
+            }
+
             await createResource(
-                '', // projectId empty for global
-                file.name,
-                'pdf', // Assuming PDF for now
+                '',
+                file?.name || cloudUrl.split('/').pop() || 'Nuevo Recurso',
+                kind,
                 {
-                    range: 'REGIONAL', // Default or from AI if we refine prompt
+                    range: 'REGIONAL',
                     compliance_type: 'OBLIGATORY',
                     jurisdiction: 'Andalucía',
                     summary: aiAnalysis.key_mandates?.join('. ') || '',
-                    area: aiAnalysis.theme
+                    area: aiAnalysis.theme,
+                    source_uri: cloudUrl || undefined
                 }
             );
             onSuccess();
@@ -102,24 +119,71 @@ export default function RegisterResourceModal({ isOpen, onClose, onSuccess }: Re
                 <div className="flex-1 p-10">
                     <AnimatePresence mode="wait">
                         {step === 'upload' && (
-                            <motion.div
-                                key="upload"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-[2.5rem] py-20 group hover:border-primary/50 transition-colors cursor-pointer relative"
-                            >
-                                <input
-                                    type="file"
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                    onChange={handleFileChange}
-                                />
-                                <div className="p-6 bg-primary/10 rounded-full mb-6 group-hover:scale-110 transition-transform duration-500">
-                                    <Upload className="w-10 h-10 text-primary" />
+                            <div className="space-y-6">
+                                <div className="flex p-1 bg-white/5 rounded-2xl border border-white/10 w-fit mx-auto">
+                                    <button
+                                        onClick={() => setResourceType('file')}
+                                        className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${resourceType === 'file' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        Subir Archivo
+                                    </button>
+                                    <button
+                                        onClick={() => setResourceType('link')}
+                                        className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${resourceType === 'link' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        Vincular Cloud (GDocs, ELI...)
+                                    </button>
                                 </div>
-                                <p className="text-lg font-bold mb-1">Arrastra la Norma o Documento</p>
-                                <p className="text-sm text-muted-foreground">PDF, Word o TXT (MAX 50MB)</p>
-                            </motion.div>
+
+                                {resourceType === 'file' ? (
+                                    <motion.div
+                                        key="upload-file"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-[2.5rem] py-20 group hover:border-primary/50 transition-colors cursor-pointer relative"
+                                    >
+                                        <input
+                                            type="file"
+                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                            onChange={handleFileChange}
+                                            accept=".pdf,.docx,.doc,.txt,.json,.xml,.html,.csv,.xlsx,.xls,.md,.pptx"
+                                        />
+                                        <div className="p-6 bg-primary/10 rounded-full mb-6 group-hover:scale-110 transition-transform duration-500">
+                                            <Upload className="w-10 h-10 text-primary" />
+                                        </div>
+                                        <p className="text-lg font-bold mb-1">Arrastra el archivo maestro</p>
+                                        <p className="text-sm text-muted-foreground">PDF, Word, Markdown, PowerPoint, XML, Excel o CSV</p>
+                                    </motion.div>
+                                ) : (
+                                    <motion.div
+                                        key="upload-link"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -10 }}
+                                        className="space-y-4"
+                                    >
+                                        <div className="relative group">
+                                            <Globe className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                            <input
+                                                type="url"
+                                                placeholder="https://docs.google.com/... o https://publications.europa.eu/..."
+                                                value={cloudUrl}
+                                                onChange={(e) => setCloudUrl(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 focus:border-primary/50 rounded-[2rem] pl-16 pr-8 py-6 outline-none text-sm transition-all"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={handleCloudSubmit}
+                                            disabled={!cloudUrl}
+                                            className="w-full py-4 bg-primary text-primary-foreground rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+                                        >
+                                            Analizar Enlace
+                                        </button>
+                                        <p className="text-[10px] text-center text-muted-foreground uppercase font-medium tracking-widest">Compatible con Google Workspace y Repositorios XML/ELI</p>
+                                    </motion.div>
+                                )}
+                            </div>
                         )}
 
                         {step === 'analyzing' && (

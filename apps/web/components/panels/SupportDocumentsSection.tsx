@@ -16,6 +16,7 @@ interface SupportDocumentsSectionProps {
     projectId: string;
     onCompare: (block: DocumentBlock) => void;
     activeBlockId?: string;
+    allBlocks?: DocumentBlock[];
 }
 
 interface NetworkConnection {
@@ -24,7 +25,7 @@ interface NetworkConnection {
     sourceBlock?: DocumentBlock;
 }
 
-export default function SupportDocumentsSection({ projectId, onCompare, activeBlockId }: SupportDocumentsSectionProps) {
+export default function SupportDocumentsSection({ projectId, onCompare, activeBlockId, allBlocks }: SupportDocumentsSectionProps) {
     const [category, setCategory] = useState<SupportCategory>('network');
     const [docs, setDocs] = useState<Document[]>([]);
     const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
@@ -135,11 +136,28 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
         const block = type === 'outgoing' ? connection.targetBlock : connection.sourceBlock;
         if (!block) return null;
 
+        // Calculate hierarchy level for styling
+        let level = 0;
+        let pId = block.parent_block_id;
+        if (allBlocks) {
+            while (pId && level < 2) {
+                level++;
+                const parent = allBlocks.find(b => b.id === pId);
+                if (!parent) break;
+                pId = parent.parent_block_id;
+            }
+        }
+
+        const borderColorClass =
+            level === 2 ? "border-l-4 border-l-emerald-400 pl-2" : // Level 3 (Article) -> Green
+                level === 1 ? "border-l-4 border-l-cyan-400 pl-2" :    // Level 2 (Chapter) -> Cyan
+                    "border-l-4 border-l-amber-400 pl-2";                  // Level 1 (Title) -> Amber
+
         const isTagConnection = connection.link.link_type === 'tag_similarity';
         const commonTags = connection.link.metadata?.common_tags;
 
         return (
-            <Card key={connection.link.id} className="group hover:border-primary/30 transition-all shadow-none bg-muted/30 border-dashed">
+            <Card key={connection.link.id} className={cn("group hover:border-primary/30 transition-all shadow-none bg-muted/30 border-t border-r border-b border-border/40 rounded-l-none", borderColorClass)}>
                 <CardContent className="p-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -183,7 +201,7 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
     };
 
     const graphData = activeBlockId
-        ? transformToLocalGraph(activeBlockId, activeBlockTitle, { linked: linkedRefs, unlinked: unlinkedRefs, backlinks: backlinks })
+        ? transformToLocalGraph(activeBlockId, activeBlockTitle, { linked: linkedRefs, unlinked: unlinkedRefs, backlinks: backlinks }, allBlocks || [])
         : { nodes: [], links: [] };
 
     return (

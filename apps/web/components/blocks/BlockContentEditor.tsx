@@ -1,20 +1,18 @@
-'use client';
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { DocumentBlock, Resource, BlockResourceLink, BlockVersion, SemanticLink } from '@docnex/shared';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { DocumentBlock, Resource, BlockResourceLink, BlockVersion, SemanticLink, BlockComment } from '@docnex/shared';
 import { updateBlock, updateBlockTitle, listBlockLinks, removeLink, createResourceExtract, createLink, createBlockComment, listBlockComments, listSemanticLinksByBlock } from '@/lib/api';
-import { Network, Tag, Save, ChevronDown, ChevronUp, Split, Image as ImageIcon, Link as LinkIcon, Trash2, Maximize2, Minimize2, Copy, History, PlusSquare, X } from 'lucide-react';
+import { Network, Tag, Save, ChevronDown, ChevronUp, Split, Image as ImageIcon, Link as LinkIcon, Trash2, Maximize2, Minimize2, Copy, History, PlusSquare, X, BookOpen, Edit3 } from 'lucide-react';
 import { SemanticLinkOverlay } from '../viewer/SemanticLinkOverlay';
 import { AIFloatingMenu } from '../editor/AIFloatingMenu';
 import { processAutoLinks } from '@/lib/ai/semantic-engine';
 import { supabase } from '@/lib/supabase/client';
-import type { BlockComment } from '@docnex/shared';
 import { Editor } from '@tiptap/react';
 import SimpleEditor, { SimpleEditorHandle } from '../editor/SimpleEditor';
 import SharedToolbar from '../editor/SharedToolbar';
 import NoteDialog from '../notes/NoteDialog';
 import { TagInput } from '../ui/TagInput';
 import { useDebouncedSave } from '@/hooks/use-auto-save';
+import { decodeHtmlEntities } from '@/lib/text-utils';
 
 interface BlockContentEditorProps {
     block: DocumentBlock;
@@ -45,7 +43,7 @@ export default function BlockContentEditor({
     onOpenSidePanel,
     refreshTrigger = 0
 }: BlockContentEditorProps) {
-    const [title, setTitle] = useState(block.title);
+    const [title, setTitle] = useState(decodeHtmlEntities(block.title));
     const [content, setContent] = useState(block.content);
     const [tags, setTags] = useState<string[]>(block.tags || []);
     const [links, setLinks] = useState<BlockResourceLink[]>([]);
@@ -56,6 +54,40 @@ export default function BlockContentEditor({
     const [semanticLinks, setSemanticLinks] = useState<SemanticLink[]>([]);
     const [isTagsOpen, setIsTagsOpen] = useState(false);
     const [tagPanelSize, setTagPanelSize] = useState({ width: 288, height: 300 });
+
+    // New State for Full Chapter Reading Mode
+    const [showFullChapter, setShowFullChapter] = useState(false);
+
+    // Helpers for Chapter Mode
+    const childBlocks = useMemo(() => {
+        return allBlocks
+            .filter(b => b.parent_block_id === block.id)
+            .sort((a, b) => a.order_index - b.order_index);
+    }, [block.id, allBlocks]);
+
+    const getAllDescendants = useCallback((parentId: string): DocumentBlock[] => {
+        const children = allBlocks
+            .filter(b => b.parent_block_id === parentId)
+            .sort((a, b) => a.order_index - b.order_index);
+
+        let descendants: DocumentBlock[] = [];
+        for (const child of children) {
+            descendants.push(child);
+            descendants = [...descendants, ...getAllDescendants(child.id)];
+        }
+        return descendants;
+    }, [allBlocks]);
+
+    const fullChapterBlocks = useMemo(() => {
+        if (!showFullChapter) return [];
+        return [block, ...getAllDescendants(block.id)];
+    }, [showFullChapter, block, getAllDescendants]);
+
+    const handleTitleChange = (newTitle: string) => {
+        // Just local state update wrapper if needed, logic is already inline usually
+        // But the linter complained.
+        saveTitle(newTitle);
+    };
 
     useEffect(() => {
         const saved = localStorage.getItem('tag-panel-size');
@@ -249,7 +281,7 @@ export default function BlockContentEditor({
 
     // Initial load when block changes
     useEffect(() => {
-        setTitle(block.title);
+        setTitle(decodeHtmlEntities(block.title));
         setContent(block.content);
         setTags(block.tags || []);
         setIsDirty(false);
@@ -646,161 +678,133 @@ export default function BlockContentEditor({
             {activeEditor && <AIFloatingMenu editor={activeEditor} blockId={block.id} />}
 
             {/* 3. MAIN EDITOR AREA SPLIT */}
-            <div className={`flex-1 overflow-hidden flex ${comparingItem ? 'flex-col' : ''}`}>
+            {/* 3. MAIN EDITOR AREA SPLIT */}
+            <div className="flex-1 overflow-hidden flex">
 
-                {/* 3a. Current Version Editor */}
-                <div className={`overflow-y-auto p-6 min-h-0 ${comparingItem ? 'flex-1 border-b border-border' : 'flex-1'}`}>
+                {/* 3a. Current Version Editor - HIDE if in Full Chapter Reading Mode */}
+                {!showFullChapter && (
+                    <div className={`overflow-y-auto p-6 min-h-0 ${comparingItem ? 'flex-1 border-r border-border' : 'flex-1'}`}>
 
-                    {/* Comparison Header (Only if comparing) */}
-                    {comparingItem && (
-                        <div className="mb-4 flex items-center justify-between">
-                            <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-wider">
-                                📄 VERSIÓN ACTUAL
-                            </span>
-                            <div className="flex gap-2">
-                                {isDirty && (
-                                    <>
-                                        <button
-                                            onClick={handleRevert}
-                                            className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
-                                        >
-                                            Descartar
-                                        </button>
-                                        <button
-                                            onClick={handleSave}
-                                            disabled={isSaving}
-                                            className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50 transition-all font-medium"
-                                        >
-                                            {isSaving ? 'Guardando...' : 'Guardar'}
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    <SimpleEditor
-                        id={`editor-${block.id}`}
-                        ref={mainEditorRef}
-                        content={content}
-                        onChange={handleContentChange}
-                        placeholder="Comienza a escribir aquí..."
-                        onFocus={handleMainEditorFocus}
-                        onNoteClick={handleNoteClick}
-                    />
-
-                    {/* Semantic Links Overlay */}
-                    <SemanticLinkOverlay
-                        links={semanticLinks}
-                        onLinkClick={(targetId) => {
-                            const targetBlock = allBlocks.find(b => b.id === targetId);
-                            if (targetBlock && onOpenSidePanel) {
-                                onOpenSidePanel({
-                                    type: 'block',
-                                    id: targetBlock.id,
-                                    title: targetBlock.title,
-                                    content: targetBlock.content
-                                });
-                            }
-                        }}
-                    />
-
-                    {/* Linked resources - only when not comparing */}
-                    {!comparingItem && links.length > 0 && (
-                        <div className="mt-8 p-4 bg-muted/20 border border-border rounded-xl">
-                            <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3 tracking-widest">
-                                Recursos vinculados
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                                {links.map(link => {
-                                    const resource = (link as unknown as { resource: Resource }).resource;
-                                    return (
-                                        <span
-                                            key={link.id}
-                                            className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/10"
-                                        >
-                                            📎 {resource?.title || 'Recurso'}
-                                            <button
-                                                onClick={() => handleUnlink(link.id)}
-                                                className="text-primary/60 hover:text-red-500 ml-1 transition-colors"
-                                            >
-                                                ×
-                                            </button>
-                                        </span>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* 3b. Compared Version Editor (Only if comparing) */}
-                {comparingItem && (
-                    <div className="flex-1 overflow-y-auto bg-muted/40 border-t-4 border-primary/30 min-h-0">
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <span className="text-xs font-bold text-primary bg-primary/20 px-3 py-1 rounded-full uppercase tracking-wider">
-                                    {comparingItem.label}
+                        {/* Comparison Header (Only if comparing) */}
+                        {comparingItem && (
+                            <div className="mb-4 flex items-center justify-between">
+                                <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-wider">
+                                    📄 VERSIÓN ACTUAL
                                 </span>
                                 <div className="flex gap-2">
-                                    <button
-                                        onClick={() => {
-                                            const editor = mainEditorRef.current?.getEditor();
-                                            if (editor) {
-                                                editor.chain().focus().insertContent(` [Ref: ${comparingItem.title}] `).run();
-                                            }
-                                        }}
-                                        className="text-xs bg-blue-500 text-white px-3 py-1.5 rounded hover:bg-blue-600 transition-all font-medium flex items-center gap-1"
-                                        title="Insertar cita a este bloque en el texto principal"
-                                    >
-                                        🔗 Citar
-                                    </button>
-                                    <button
-                                        onClick={handleSubstitute}
-                                        className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded hover:bg-amber-600 transition-all font-medium flex items-center gap-1"
-                                        title="Sustituir el bloque actual con este contenido"
-                                    >
-                                        🔄 Sustituir
-                                    </button>
-                                    {isVersionDirty && comparingItem.label.includes('VERSIÓN') && (
-                                        <button
-                                            onClick={handleSaveVersion}
-                                            disabled={savingVersion}
-                                            className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50 transition-all font-medium"
-                                        >
-                                            {savingVersion ? 'Guardando...' : 'Guardar cambios'}
-                                        </button>
+                                    {isDirty && (
+                                        <>
+                                            <button
+                                                onClick={handleRevert}
+                                                className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
+                                            >
+                                                Descartar
+                                            </button>
+                                            <button
+                                                onClick={handleSave}
+                                                disabled={isSaving}
+                                                className="text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded hover:opacity-90 disabled:opacity-50 transition-all font-medium"
+                                            >
+                                                {isSaving ? 'Guardando...' : 'Guardar'}
+                                            </button>
+                                        </>
                                     )}
-                                    <button
-                                        onClick={onCloseCompare}
-                                        className="text-xs text-muted-foreground hover:text-foreground bg-card px-3 py-1.5 rounded border border-border flex items-center gap-1 transition-all"
-                                    >
-                                        ✕ Cerrar
-                                    </button>
                                 </div>
                             </div>
+                        )}
 
-                            {/* Version title - editable */}
-                            <input
-                                type="text"
-                                value={versionTitle}
-                                onChange={(e) => {
-                                    setVersionTitle(e.target.value);
-                                    setIsVersionDirty(true);
-                                }}
-                                className="w-full text-lg font-bold text-foreground mb-4 bg-card border border-border rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
-                                placeholder="Título de la versión..."
-                            />
+                        <SimpleEditor
+                            id={`editor-${block.id}`}
+                            ref={mainEditorRef}
+                            content={content}
+                            onChange={handleContentChange}
+                            placeholder="Comienza a escribir aquí..."
+                            onFocus={handleMainEditorFocus}
+                            onNoteClick={handleNoteClick}
+                        />
 
-                            {/* Version content - EDITABLE */}
-                            <SimpleEditor
-                                ref={versionEditorRef}
-                                content={versionContent}
-                                onChange={handleVersionContentChange}
-                                placeholder="Contenido de la versión..."
-                                onFocus={handleVersionEditorFocus}
-                                onNoteClick={handleNoteClick}
-                            />
+                        {/* Semantic Links Overlay */}
+                        <SemanticLinkOverlay
+                            links={semanticLinks}
+                            onLinkClick={(targetId) => {
+                                const targetBlock = allBlocks.find(b => b.id === targetId);
+                                if (targetBlock && onOpenSidePanel) {
+                                    onOpenSidePanel({
+                                        type: 'block',
+                                        id: targetBlock.id,
+                                        title: targetBlock.title,
+                                        content: targetBlock.content
+                                    });
+                                }
+                            }}
+                        />
+                    </div>
+                )}
+
+                {/* Editor Area */}
+                {/* Secondary Area (Reading Mode or Comparison) - Only render if active */}
+                {(showFullChapter || comparingItem) && (
+                    <div className="flex-1 overflow-y-auto relative scroll-smooth bg-muted/10 border-l border-border">
+                        <div className="max-w-4xl mx-auto px-8 py-8 min-h-full">
+                            {comparingItem && (
+                                <div className="mb-8 p-4 bg-muted/30 rounded-xl border border-border/50">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{comparingItem.label}</h3>
+                                        <button onClick={onCloseCompare} className="text-muted-foreground hover:text-foreground">
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="prose prose-sm dark:prose-invert max-w-none opacity-80">
+                                        <h3>{comparingItem.title}</h3>
+                                        <div dangerouslySetInnerHTML={{ __html: comparingItem.content }} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {showFullChapter && (
+                                <div className="space-y-8 animate-in fade-in duration-500">
+                                    {/* Reading Mode View */}
+                                    {fullChapterBlocks.map((blk, index) => {
+                                        // Calculate indented level relative to root
+                                        // Root (selected block) is level 0 here effectively
+                                        let level = 0;
+                                        let curr = blk;
+                                        // Simple heuristic: if parent is the main block, level 1. If parent is child of main, level 2.
+                                        // We can just start from 0 for the selected block.
+
+                                        return (
+                                            <div key={blk.id} className={`
+                                                ${blk.id === block.id ? 'pb-8 border-b border-border/50' : 'pl-8 border-l-2 border-border/30'}
+                                                transition-all hover:bg-accent/5 p-4 rounded-lg
+                                            `}>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    {blk.id !== block.id && (
+                                                        <span className="text-[10px] uppercase font-bold text-muted-foreground/50">
+                                                            {blk.block_type || 'Bloque'} {blk.order_index}
+                                                        </span>
+                                                    )}
+                                                    <h2 className={`font-bold ${blk.id === block.id ? 'text-2xl text-primary' : 'text-lg text-foreground/80'}`}>
+                                                        {blk.title}
+                                                    </h2>
+                                                </div>
+                                                <div
+                                                    className="prose prose-lg dark:prose-invert max-w-none text-foreground/90 leading-relaxed"
+                                                    dangerouslySetInnerHTML={{ __html: blk.content }}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+
+                                    <div className="flex justify-center pt-8">
+                                        <button
+                                            onClick={() => setShowFullChapter(false)}
+                                            className="px-6 py-2 bg-muted hover:bg-accent text-muted-foreground rounded-full text-xs font-bold uppercase tracking-widest transition-all"
+                                        >
+                                            Volver a Edición
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

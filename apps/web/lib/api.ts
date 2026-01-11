@@ -287,19 +287,26 @@ export const listResources = async (projectId: string | null, documentId?: strin
 /**
  * Specifically list all regulators/normative resources in the global repository
  */
-export const listGlobalRegulatoryResources = async (area?: string) => {
+export const listGlobalRegulatoryResources = async (area?: string, includeObsolete: boolean = false) => {
     let query = supabase
         .from('resources')
         .select('*')
         .is('project_id', null)
         .order('created_at', { ascending: false });
 
+    if (!includeObsolete) {
+        query = query.eq('status', 'ACTIVE');
+    }
+
     if (area) {
         query = query.contains('meta', { area });
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+        console.error('Error fetching global resources:', error);
+        return [];
+    }
     return data;
 };
 

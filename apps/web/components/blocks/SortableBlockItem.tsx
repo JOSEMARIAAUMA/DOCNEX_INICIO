@@ -1,9 +1,8 @@
-'use client';
-
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 import { DocumentBlock } from '@docnex/shared';
+import { decodeHtmlEntities } from '@/lib/text-utils';
 
 interface SortableBlockItemProps {
     block: DocumentBlock;
@@ -16,6 +15,7 @@ interface SortableBlockItemProps {
     onToggleExpand?: () => void;
     onToggleMultiSelect?: () => void;
     isSelectionMode?: boolean;
+    level?: number;
 }
 
 export default function SortableBlockItem({
@@ -28,7 +28,8 @@ export default function SortableBlockItem({
     onMenuAction,
     onToggleExpand,
     onToggleMultiSelect,
-    isSelectionMode
+    isSelectionMode,
+    level = 0
 }: SortableBlockItemProps) {
     const {
         attributes,
@@ -45,16 +46,30 @@ export default function SortableBlockItem({
         opacity: isDragging ? 0.5 : 1,
     };
 
+    // Dynamic styling based on hierarchy level - Clean & Professional
+    const getLevelStyles = () => {
+        const baseStyles = "bg-card hover:bg-accent/50 border-border";
+
+        if (isSelected) return 'bg-primary/10 border-primary/50 shadow-sm';
+        if (isMultiSelected) return 'bg-primary/20 border-primary shadow-sm';
+
+        switch (level) {
+            case 0: // TÍTULO - Distinct background and border
+                return `border-l-4 border-l-amber-500 bg-amber-500/10 mb-1 ${baseStyles}`;
+            case 1: // CAPÍTULO - Cyan border
+                return `border-l-2 border-l-cyan-500 bg-cyan-500/5 ${baseStyles}`;
+            case 2: // ARTÍCULO - Emerald border
+                return `border-l-2 border-l-emerald-500 bg-emerald-500/5 ${baseStyles}`;
+            default:
+                return `${baseStyles} border-l-2 border-l-transparent opacity-90`;
+        }
+    };
+
     return (
         <div
             ref={setNodeRef}
             style={style}
-            className={`group flex items-center gap-2 p-2 rounded cursor-pointer border transition-all ${isMultiSelected
-                ? 'bg-primary/20 border-primary shadow-sm'
-                : isSelected
-                    ? 'bg-primary/10 border-primary/50 shadow-sm'
-                    : 'bg-card border-border hover:bg-accent'
-                }`}
+            className={`group flex items-center gap-2 p-2 rounded-md cursor-pointer border transition-all duration-200 ${getLevelStyles()}`}
             onClick={onClick}
         >
             {/* Multi-select Checkbox - Only in Selection Mode */}
@@ -85,12 +100,14 @@ export default function SortableBlockItem({
                             e.stopPropagation();
                             onToggleExpand?.();
                         }}
-                        className={`p-0.5 hover:bg-primary/10 rounded-sm transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`p-0.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-sm transition-transform duration-200`}
                     >
-                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                        {/* Use different chevron orientation or icon based on state if desired, but rotation is standard */}
+                        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
                     </button>
                 ) : (
-                    <div className="w-3.5" />
+                    /* Dot for leaf nodes to align visual rhythm */
+                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />
                 )}
             </div>
 
@@ -105,8 +122,13 @@ export default function SortableBlockItem({
             </div>
 
             {/* Block title */}
-            <div className="flex-1 truncate text-sm font-medium text-foreground">
-                {block.title}
+            <div className={`flex-1 truncate text-sm ${level === 0
+                ? 'font-bold text-foreground text-base py-0.5' // TÍTULO style
+                : level === 1
+                    ? 'font-semibold text-foreground/90' // CAPÍTULO style
+                    : 'text-muted-foreground' // ARTÍCULO style
+                }`}>
+                {decodeHtmlEntities(block.title)}
             </div>
 
             {/* Menu button */}

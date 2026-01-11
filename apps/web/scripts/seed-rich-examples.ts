@@ -143,6 +143,11 @@ async function seedRichContent() {
         }
 
         // Clear existing blocks for a fresh start
+        if (!doc) {
+            console.warn(`⚠️ No se pudo crear/encontrar documento para: ${dataset.name}`);
+            continue;
+        }
+
         await supabase.from('document_blocks').delete().eq('document_id', doc.id);
 
         // Insert rich blocks
