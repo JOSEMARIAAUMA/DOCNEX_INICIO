@@ -1,5 +1,5 @@
 import { supabase } from './supabase/client';
-export type { Project, Document, DocumentBlock, Resource, BlockResourceLink, ResourceExtract, BlockComment, BlockVersion, DocumentHistory } from '@docnex/shared';
+export type { Workspace, Project, Document, DocumentBlock, Resource, BlockResourceLink, ResourceExtract, BlockComment, BlockVersion, DocumentHistory } from '@docnex/shared';
 import {
     Workspace, Project, Document, DocumentBlock, Resource,
     ResourceExtract, BlockResourceLink, BlockHighlight, BlockComment,
@@ -23,37 +23,76 @@ export const getActiveProject = async (): Promise<Project | null> => {
     return projects?.[0] || null;
 };
 
+/**
+ * List all projects
+ */
+export const listProjects = async (): Promise<Project[]> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error listing projects:', error);
+        return [];
+    }
+    return data || [];
+};
+
 // Documents
 export const listDocuments = async (projectId: string, category: string = 'main'): Promise<Document[]> => {
-    const { data, error } = await supabase
+    // Fetch all docs for this category
+    let query = supabase
         .from('documents')
         .select('*')
         .eq('project_id', projectId)
         .eq('category', category)
         .order('updated_at', { ascending: false });
 
-    if (error) throw error;
+    console.log(`[API] listDocuments calling supabase for project ${projectId} category ${category}`);
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('[API] listDocuments Supabase Error:', JSON.stringify(error, null, 2));
+        throw error;
+    }
+
     return data || [];
 };
 
 export const getDocument = async (id: string): Promise<Document | null> => {
     const { data, error } = await supabase
         .from('documents')
-        .select('*')
+        .select(`
+            *,
+            project:projects (
+                *,
+                workspace:workspaces (*)
+            )
+        `)
         .eq('id', id)
         .single();
-    if (error) throw error;
-    return data;
+    if (error) {
+        console.error('[API] getDocument Error:', error);
+        throw error;
+    }
+    return data as any;
 }
 
 export const createDocument = async (projectId: string, title: string, category: string = 'main'): Promise<Document | null> => {
+    const row: any = { project_id: projectId, title, category };
+
+    console.log('[API] createDocument inserting:', row);
     const { data, error } = await supabase
         .from('documents')
-        .insert([{ project_id: projectId, title, category }])
+        .insert([row])
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[API] createDocument Error details:', JSON.stringify(error, null, 2));
+        throw error;
+    }
     return data;
 };
 
@@ -68,6 +107,54 @@ export const updateDocument = async (id: string, updates: Partial<Document>): Pr
     return data;
 }
 
+export const deleteDocument = async (id: string): Promise<void> => {
+    // Hard delete for now, or check requirements. User asked for "eliminarlos" AND "archivarlos".
+    // Usually "eliminarlos" means delete.
+    const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+}
+
+export const archiveDocument = async (id: string): Promise<Document | null> => {
+    return updateDocument(id, { status: 'archived' });
+}
+
+export const duplicateDocument = async (id: string, newTitle?: string): Promise<Document | null> => {
+    // 1. Get original doc
+    const original = await getDocument(id);
+    if (!original) throw new Error("Document not found");
+
+    // 2. Create new doc
+    const created = await createDocument(original.project_id, newTitle || `${original.title} (Copy)`, original.category);
+    if (!created) throw new Error("Failed to create duplication");
+
+    // 3. Get blocks
+    const blocks = await listBlocks(id);
+
+    // 4. Duplicate blocks
+    if (blocks.length > 0) {
+        const blocksToInsert = blocks.map(b => ({
+            document_id: created.id,
+            content: b.content,
+            title: b.title,
+            order_index: b.order_index,
+            tags: b.tags,
+            block_type: b.block_type || 'text'
+        }));
+
+        const { error: blocksError } = await supabase
+            .from('document_blocks')
+            .insert(blocksToInsert);
+
+        if (blocksError) console.error("Error duplicating blocks", blocksError);
+    }
+
+    return created;
+}
+
+
 
 // Blocks
 export const listBlocks = async (documentId: string): Promise<DocumentBlock[]> => {
@@ -76,6 +163,24 @@ export const listBlocks = async (documentId: string): Promise<DocumentBlock[]> =
         .select('*')
         .eq('document_id', documentId)
         .order('order_index', { ascending: true }); // Make sure to use order_index
+
+    if (error) throw error;
+    return data || [];
+};
+
+/**
+ * Special list for the Full View that includes related metadata
+ */
+export const listBlocksForViewer = async (documentId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+        .from('document_blocks')
+        .select(`
+            *,
+            block_versions(id, version_number, title, created_at),
+            block_resource_links(id, resource_id, resource:resources(title, kind))
+        `)
+        .eq('document_id', documentId)
+        .order('order_index', { ascending: true });
 
     if (error) throw error;
     return data || [];
@@ -90,15 +195,18 @@ import { extractKeywords } from './ai/keyword-extractor';
 export const createBlock = async (documentId: string, content: string, orderIndex: number, title: string = 'New Block', tags?: string[]): Promise<DocumentBlock | null> => {
     // Auto-generate tags if not provided, or merge? 
     // For now, if tags is undefined, we generate.
-    const finalTags = tags !== undefined ? tags : extractKeywords(content);
+    // console.log(`[API] createBlock inserting block for doc ${documentId}. Tags:`, finalTags);
 
     const { data, error } = await supabase
         .from('document_blocks')
-        .insert([{ document_id: documentId, content, order_index: orderIndex, title, tags: finalTags }]) // Added title and tags
+        .insert([{ document_id: documentId, content, order_index: orderIndex, title: title || 'New Block', is_deleted: false }]) // Added title back as it is REQUIRED
         .select()
         .single();
 
-    if (error) throw error;
+    if (error) {
+        console.error('[API] createBlock Error details:', JSON.stringify(error, null, 2));
+        throw error;
+    }
     return data;
 };
 
@@ -133,25 +241,74 @@ export const getBlock = async (blockId: string): Promise<DocumentBlock> => {
 };
 
 // Resources
-export const listResources = async (projectId: string): Promise<Resource[]> => {
+// Resources
+export const createResource = async (projectId: string | null, title: string, kind: 'pdf' | 'docx' | 'url' | 'other', meta?: any, documentId?: string) => {
     const { data, error } = await supabase
         .from('resources')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
-}
-
-export const createResource = async (projectId: string, title: string, kind: string, meta: Record<string, unknown> = {}): Promise<Resource | null> => {
-    const { data, error } = await supabase
-        .from('resources')
-        .insert([{ project_id: projectId, title, kind, meta }])
+        .insert([{
+            project_id: projectId, // Can be null for global resources
+            document_id: documentId,
+            title,
+            kind,
+            meta: meta || {},
+            created_at: new Date().toISOString()
+        }])
         .select()
         .single();
+
     if (error) throw error;
     return data;
-}
+};
+
+export const listResources = async (projectId: string | null, documentId?: string) => {
+    let query = supabase
+        .from('resources')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (projectId === null) {
+        // Fetch Global Resources
+        query = query.is('project_id', null);
+    } else {
+        // Fetch Project Resources
+        query = query.eq('project_id', projectId);
+    }
+
+    // Enforce Strict Isolation if documentId is provided
+    if (documentId) {
+        query = query.eq('document_id', documentId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+};
+
+/**
+ * Specifically list all regulators/normative resources in the global repository
+ */
+export const listGlobalRegulatoryResources = async (area?: string, includeObsolete: boolean = false) => {
+    let query = supabase
+        .from('resources')
+        .select('*')
+        .is('project_id', null)
+        .order('created_at', { ascending: false });
+
+    if (!includeObsolete) {
+        query = query.eq('status', 'ACTIVE');
+    }
+
+    if (area) {
+        query = query.contains('meta', { area });
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Error fetching global resources:', error);
+        return [];
+    }
+    return data;
+};
 
 // Links
 export const listBlockLinks = async (blockId: string): Promise<BlockResourceLink[]> => {
@@ -215,6 +372,14 @@ export const updateResource = async (id: string, updates: Partial<Resource>): Pr
     return data;
 };
 
+export const updateResourceTheme = async (id: string, theme: string): Promise<void> => {
+    const { error } = await supabase
+        .from('resources')
+        .update({ theme, updated_at: new Date().toISOString() })
+        .eq('id', id);
+    if (error) throw error;
+};
+
 export const deleteResource = async (id: string): Promise<void> => {
     const { error } = await supabase
         .from('resources')
@@ -223,14 +388,28 @@ export const deleteResource = async (id: string): Promise<void> => {
     if (error) throw error;
 };
 
-// Document delete
-export const deleteDocument = async (id: string): Promise<void> => {
-    const { error } = await supabase
-        .from('documents')
-        .delete()
-        .eq('id', id);
+/**
+ * Fetch the actual content of a resource (for integrated viewer)
+ */
+export const fetchResourceContent = async (id: string): Promise<{ content: string, type: string }> => {
+    const { data, error } = await supabase
+        .from('resources')
+        .select('title, kind, file_path, meta')
+        .eq('id', id)
+        .single();
+
     if (error) throw error;
+
+    // For now, if it's a 'text' kind or has content in meta, return it.
+    // In a real app, this might fetch from storage or a specific table.
+    return {
+        content: data.meta?.content || `Contenido de ejemplo para: ${data.title}`,
+        type: data.kind
+    };
 };
+
+// Document delete
+
 
 // ============================================================
 // SPRINT 2: Enhanced Block Operations
@@ -261,6 +440,72 @@ export const listDeletedBlocks = async (documentId: string): Promise<DocumentBlo
         .eq('is_deleted', true)
         .order('updated_at', { ascending: false });
     if (error) throw error;
+    return data || [];
+};
+
+// ============================================================
+// SPRINT 4: Library Experiences & Learning
+// ============================================================
+
+export type ExperienceType = 'limitation' | 'success' | 'contradiction' | 'tip' | 'critical_note';
+
+export interface LibraryExperience {
+    id: string;
+    resource_id: string;
+    project_id?: string;
+    block_id?: string;
+    experience_type: ExperienceType;
+    content: string;
+    created_at: string;
+}
+
+export const listExperiencesForResource = async (resourceId: string): Promise<LibraryExperience[]> => {
+    const { data, error } = await supabase
+        .from('library_experiences')
+        .select('*')
+        .eq('resource_id', resourceId)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+};
+
+export const createExperience = async (
+    resourceId: string,
+    content: string,
+    type: ExperienceType,
+    projectId?: string,
+    blockId?: string
+): Promise<LibraryExperience | null> => {
+    const { data, error } = await supabase
+        .from('library_experiences')
+        .insert([{
+            resource_id: resourceId,
+            content,
+            experience_type: type,
+            project_id: projectId,
+            block_id: blockId
+        }])
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
+/**
+ * List all semantic links for a document
+ */
+export const listSemanticLinks = async (documentId: string): Promise<any[]> => {
+    const { data, error } = await supabase
+        .from('semantic_links')
+        .select('*')
+        .eq('target_document_id', documentId);
+
+    if (error) {
+        console.error("Error listing semantic links:", error);
+        return [];
+    }
     return data || [];
 };
 
@@ -558,6 +803,30 @@ export const listBlockComments = async (blockId: string): Promise<BlockComment[]
     return data || [];
 };
 
+/**
+ * List all comments/notes for a whole document by joining through blocks
+ */
+export const listDocumentComments = async (documentId: string): Promise<BlockComment[]> => {
+    // We fetch blocks first to get their IDs, or use a join if possible (client-side join here for simplicity or better RPC)
+    const { data: blocks } = await supabase
+        .from('document_blocks')
+        .select('id')
+        .eq('document_id', documentId)
+        .eq('is_deleted', false);
+
+    if (!blocks || blocks.length === 0) return [];
+
+    const blockIds = blocks.map(b => b.id);
+    const { data, error } = await supabase
+        .from('block_comments')
+        .select('*')
+        .in('block_id', blockIds)
+        .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+};
+
 export const createBlockComment = async (
     blockId: string,
     textSelection: string,
@@ -775,4 +1044,200 @@ export const getBacklinksByBlock = async (blockId: string): Promise<SemanticLink
         .order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
+};
+
+// ============================================================
+// SPRINT 4: Project Management & Export/Import
+// ============================================================
+
+export const createWorkspace = async (name: string): Promise<Workspace | null> => {
+    const { data, error } = await supabase
+        .from('workspaces')
+        .insert([{ name }])
+        .select()
+        .single();
+    if (error) {
+        console.error('Error creating workspace:', error);
+        throw error;
+    }
+    return data;
+};
+
+export const getWorkspaces = async (): Promise<Workspace[]> => {
+    const { data, error } = await supabase
+        .from('workspaces')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const updateWorkspace = async (id: string, updates: Partial<Workspace>): Promise<Workspace | null> => {
+    const { data, error } = await supabase
+        .from('workspaces')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteWorkspace = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('workspaces')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+};
+
+export const createProject = async (workspaceId: string, name: string, description: string = ''): Promise<Project | null> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .insert([{ workspace_id: workspaceId, name, description }])
+        .select()
+        .single();
+    if (error) {
+        console.error('Error creating project:', error);
+        throw error;
+    }
+    return data;
+};
+
+export const updateProject = async (id: string, updates: Partial<Project>): Promise<Project | null> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const deleteProject = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
+    if (error) throw error;
+};
+
+export const listProjectsByWorkspace = async (workspaceId: string): Promise<Project[]> => {
+    const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const exportProjectToJSON = async (projectId: string): Promise<string> => {
+    // 1. Fetch Project
+    const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).single();
+    if (!project) throw new Error('Project not found');
+
+    // 2. Fetch Resources
+    const { data: resources } = await supabase.from('resources').select('*').eq('project_id', projectId);
+
+    // 3. Fetch Documents (and their children)
+    const { data: documents } = await supabase.from('documents').select('*').eq('project_id', projectId);
+
+    // 4. Fetch Blocks for all documents
+    let blocks: any[] = [];
+    if (documents && documents.length > 0) {
+        const docIds = documents.map(d => d.id);
+        const { data: b } = await supabase.from('document_blocks').select('*').in('document_id', docIds);
+        if (b) blocks = b;
+    }
+
+    // Capture version timestamp
+    const exportData = {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        project,
+        resources: resources || [],
+        documents: documents || [],
+        blocks: blocks || []
+    };
+
+    return JSON.stringify(exportData, null, 2);
+};
+
+export const importProjectFromJSON = async (jsonString: string, workspaceId: string): Promise<Project> => {
+    let data;
+    try {
+        data = JSON.parse(jsonString);
+    } catch (e) {
+        throw new Error('Invalid JSON format');
+    }
+
+    if (!data.project || !data.documents) {
+        throw new Error('Invalid backup format: missing core data');
+    }
+
+    // 1. Create new project
+    const newProjectName = `${data.project.name} (Restored ${new Date().toLocaleDateString()})`;
+    const project = await createProject(workspaceId, newProjectName);
+    if (!project) throw new Error('Failed to create restored project');
+
+    const projectId = project.id;
+    const oldToNewDocIds: Record<string, string> = {};
+
+    // 2. Restore Resources
+    if (data.resources && data.resources.length > 0) {
+        const resourcesToInsert = data.resources.map((r: any) => ({
+            project_id: projectId,
+            title: r.title,
+            kind: r.kind,
+            meta: r.meta,
+            created_at: r.created_at,
+            file_path: r.file_path, // Note: This might point to non-existent files if moved systems
+            mime_type: r.mime_type,
+            file_size: r.file_size
+        }));
+        await supabase.from('resources').insert(resourcesToInsert);
+    }
+
+    // 3. Restore Documents
+    for (const doc of data.documents) {
+        const { data: newDoc } = await supabase
+            .from('documents')
+            .insert([{
+                project_id: projectId,
+                title: doc.title,
+                category: doc.category,
+                status: doc.status,
+                created_at: doc.created_at
+            }])
+            .select()
+            .single();
+
+        if (newDoc) {
+            oldToNewDocIds[doc.id] = newDoc.id;
+        }
+    }
+
+    // 4. Restore Blocks
+    if (data.blocks && data.blocks.length > 0) {
+        const blocksToInsert = data.blocks
+            .filter((b: any) => oldToNewDocIds[b.document_id]) // Only if parent doc exists
+            .map((b: any) => ({
+                document_id: oldToNewDocIds[b.document_id],
+                content: b.content,
+                title: b.title,
+                order_index: b.order_index,
+                block_type: b.block_type,
+                parent_block_id: null, // Reset hierarchy for now or handle complex recursive mapping (simplified here)
+                tags: b.tags,
+                is_deleted: b.is_deleted
+            }));
+
+        if (blocksToInsert.length > 0) {
+            await supabase.from('document_blocks').insert(blocksToInsert);
+        }
+    }
+
+    return project;
 };

@@ -18,7 +18,7 @@ function parseContent(content: string): string {
     const isHTML = content.trim().startsWith('<') || content.includes('</span>') || content.includes('</p>');
     if (isHTML) return content;
 
-    const markdownPatterns = /(\*\*|__|##|^\s*[-*+]\s|\n\|)/m;
+    const markdownPatterns = /(\*\*|__|##|^\s*[-*+]\s|\n\||\[.*\]\(.*\))/m;
     if (markdownPatterns.test(content)) {
         return marked.parse(content, { async: false }) as string;
     }

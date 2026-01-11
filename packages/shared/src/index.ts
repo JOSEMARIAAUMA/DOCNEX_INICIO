@@ -34,7 +34,7 @@ export interface DocumentBlock {
     last_edited_at: string | null;
     is_deleted: boolean;
     parent_block_id: string | null;
-    block_type: 'section' | 'note' | 'quote' | 'table';
+    block_type: 'section' | 'note' | 'quote' | 'table' | 'heading_1' | 'heading_2' | 'heading_3' | 'clause' | 'standard';
     tags?: string[];
     created_at: string;
     updated_at: string;
@@ -148,7 +148,7 @@ export interface SemanticLink {
     source_block_id: string;
     target_block_id: string;
     target_document_id?: string;
-    link_type: 'manual_ref' | 'auto_mention' | 'semantic_similarity' | 'backlink' | 'tag_similarity';
+    link_type: 'manual_ref' | 'auto_mention' | 'semantic_similarity' | 'backlink' | 'tag_similarity' | 'hierarchy';
     metadata: {
         context?: string;
         auto_generated?: boolean;

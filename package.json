@@ -12,6 +12,9 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:gemini": "tsx scripts/test-gemini-connection.ts",
+    "test:edge-cases": "tsx scripts/test-edge-cases.ts",
+    "test:ai": "npm run test:gemini && npm run test:edge-cases",
     "db:backup": "tsx scripts/backup-before-migration.ts",
     "db:reset-safe": "npm run db:backup && npx supabase db reset",
     "db:restore": "tsx scripts/restore-backup.ts"
@@ -22,6 +25,7 @@
     "eslint": "^8.0.0",
     "prettier": "^3.0.0",
     "supabase": "^2.71.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   },
   "engines": {

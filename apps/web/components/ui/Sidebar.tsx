@@ -1,11 +1,10 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Home, Folder, Settings, Command } from 'lucide-react';
+import { Home, Folder, Settings, Command, Library } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
-
 import { usePathname } from 'next/navigation';
 
 interface NavItemProps {
@@ -51,6 +50,8 @@ function NavItem({ icon: Icon, label, href, isExpanded }: NavItemProps) {
 
 export function Sidebar() {
     const [isExpanded, setIsExpanded] = useState(false);
+    const pathname = usePathname();
+    const isInDocuments = pathname.startsWith('/documents');
 
     return (
         <motion.div
@@ -59,8 +60,8 @@ export function Sidebar() {
                 "hidden md:flex shadow-xl"
             )}
             initial={{ width: 72 }}
-            animate={{ width: isExpanded ? 240 : 72 }}
-            onHoverStart={() => setIsExpanded(true)}
+            animate={{ width: isExpanded && !isInDocuments ? 240 : 72 }}
+            onHoverStart={() => !isInDocuments && setIsExpanded(true)}
             onHoverEnd={() => setIsExpanded(false)}
             transition={{ duration: 0.4, type: "spring", stiffness: 150, damping: 25 }}
         >
@@ -69,7 +70,7 @@ export function Sidebar() {
                     <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
                         <Command className="w-5 h-5 text-primary-foreground" />
                     </div>
-                    {isExpanded && (
+                    {(isExpanded && !isInDocuments) && (
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -82,12 +83,13 @@ export function Sidebar() {
             </div>
 
             <nav className="flex flex-col gap-1 space-y-1">
-                <NavItem icon={Home} label="Inicio" href="/" isExpanded={isExpanded} />
-                <NavItem icon={Folder} label="Documentos" href="/documents" isExpanded={isExpanded} />
+                <NavItem icon={Home} label="Inicio" href="/" isExpanded={isExpanded && !isInDocuments} />
+                <NavItem icon={Folder} label="Documentos" href="/documents" isExpanded={isExpanded && !isInDocuments} />
+                <NavItem icon={Library} label="Librería" href="/library" isExpanded={isExpanded && !isInDocuments} />
             </nav>
 
             <div className="mt-auto">
-                <NavItem icon={Settings} label="Configuración" href="/settings" isExpanded={isExpanded} />
+                <NavItem icon={Settings} label="Configuración" href="/settings" isExpanded={isExpanded && !isInDocuments} />
             </div>
         </motion.div>
     );

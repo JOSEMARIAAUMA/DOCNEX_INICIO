@@ -9,8 +9,65 @@ function generateId() {
 }
 
 export function splitByHeader(text: string, level: number): ImportItem[] {
+    // Detect HTML content
+    if (text.trim().startsWith('<')) {
+        return splitHtmlByHeader(text, level);
+    }
     const pattern = `^#{${level}}\\s+(.+)`;
     return splitByPattern(text, pattern, level);
+}
+
+function splitHtmlByHeader(html: string, level: number): ImportItem[] {
+    const items: ImportItem[] = [];
+    const headerRegex = new RegExp(`<h${level}[^>]*>(.*?)<\/h${level}>`, 'gi');
+
+    // Find all headers
+    let match;
+    let lastIndex = 0;
+
+    // Check for pre-content (before first header)
+    const firstMatch = headerRegex.exec(html);
+    if (firstMatch && firstMatch.index > 0) {
+        items.push({
+            id: generateId(),
+            title: 'Introducción / Portada',
+            content: html.substring(0, firstMatch.index).trim(),
+            target: 'active_version',
+            level: level
+        });
+        // Reset regex state
+        headerRegex.lastIndex = 0;
+    }
+
+    // Iterate headers
+    while ((match = headerRegex.exec(html)) !== null) {
+        // match[0] is full tag, match[1] is inner text (Title)
+        const title = match[1].replace(/<[^>]+>/g, '').trim(); // Strip tags from title
+        const startOfContent = headerRegex.lastIndex;
+
+        // Find end of this section (start of next header or end of string)
+        const nextRegex = new RegExp(`<h${level}[^>]*>`, 'gi');
+        nextRegex.lastIndex = startOfContent;
+        const nextMatch = nextRegex.exec(html);
+
+        const endOfContent = nextMatch ? nextMatch.index : html.length;
+        const content = html.substring(startOfContent, endOfContent).trim();
+
+        items.push({
+            id: generateId(),
+            title: title || 'Sin Título',
+            content: content, // Keep HTML content
+            target: 'active_version',
+            level: level
+        });
+
+        // Move main loop index (though regex handles it)
+        // We need to set lastIndex manually? No, exec() loop handles it.
+        // But we need to ensure we don't skip?
+        // Actually, my manual lookahead `nextRegex` is fine, but the main `headerRegex` loop will find the next header naturally.
+    }
+
+    return items;
 }
 
 export function splitByPattern(text: string, patternStr: string, level?: number): ImportItem[] {
