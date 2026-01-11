@@ -274,6 +274,7 @@ export async function finalizeLibrarianLearning(
 
 /**
  * Batch Import with Semantic Links (The GraphRAG Ingression)
+ * Supports 3-level hierarchy: TÍTULO → CAPÍTULO → ARTÍCULO
  */
 export async function batchImportBlocks(
     projectId: string,
@@ -282,29 +283,66 @@ export async function batchImportBlocks(
     links: any[]
 ): Promise<{ success: boolean; error?: string }> {
     try {
-        // 1. Create Blocks sequentially (to preserve order)
-        const blocksToInsert = blocks.map((b, index) => ({
-            document_id: documentId,
-            title: b.title,
-            content: b.content,
-            order_index: index,
-            tags: [],
-            block_type: b.target || 'text',
-            is_deleted: false
-        }));
+        const allInsertedBlocks: { id: string; title: string; hierarchyLevel: number }[] = [];
+        let orderCounter = 0;
 
-        const { data: createdBlocks, error: blockError } = await supabase
-            .from('document_blocks')
-            .insert(blocksToInsert)
-            .select('id, title')
-            .order('order_index', { ascending: true }); // Ensure order matches
+        /**
+         * Recursively insert blocks with parent-child relationships
+         */
+        async function insertBlocksRecursively(
+            items: BlockItem[],
+            parentId: string | null,
+            level: number
+        ): Promise<void> {
+            for (const block of items) {
+                // Auto-tag based on hierarchy level for cleaner filtering/search
+                const levelTags = level === 0 ? ['TÍTULO'] : level === 1 ? ['CAPÍTULO'] : level === 2 ? ['ARTÍCULO'] : [];
 
-        if (blockError || !createdBlocks) throw new Error("Error creating blocks: " + blockError?.message);
+                const blockToInsert = {
+                    document_id: documentId,
+                    title: block.title,
+                    content: block.content,
+                    order_index: orderCounter++,
+                    parent_block_id: parentId,
+                    block_type: block.target || 'section',
+                    tags: levelTags,
+                    is_deleted: false
+                };
 
-        // 2. Map original indices to new UUIDs
+                const { data: createdBlock, error } = await supabase
+                    .from('document_blocks')
+                    .insert(blockToInsert)
+                    .select('id, title')
+                    .single();
+
+                if (error || !createdBlock) {
+                    throw new Error(`Error creating block "${block.title}": ${error?.message}`);
+                }
+
+                allInsertedBlocks.push({
+                    id: createdBlock.id,
+                    title: createdBlock.title,
+                    hierarchyLevel: level
+                });
+
+                console.log(`[BatchImport] Created ${level === 0 ? 'TÍTULO' : level === 1 ? 'CAPÍTULO' : 'ARTÍCULO'}: ${block.title}`);
+
+                // Recursively insert children (up to 3 levels)
+                if (block.children && block.children.length > 0 && level < 2) {
+                    await insertBlocksRecursively(block.children, createdBlock.id, level + 1);
+                }
+            }
+        }
+
+        // 1. Insert all blocks recursively with hierarchy
+        await insertBlocksRecursively(blocks, null, 0);
+
+        console.log(`[BatchImport] Total blocks created: ${allInsertedBlocks.length}`);
+
+        // 2. Create semantic links from AI analysis
         const linksToInsert = links.map(link => {
-            const sourceBlock = createdBlocks[link.source_index];
-            const targetBlock = createdBlocks[link.target_index];
+            const sourceBlock = allInsertedBlocks[link.source_index];
+            const targetBlock = allInsertedBlocks[link.target_index];
 
             if (!sourceBlock || !targetBlock) return null;
 
@@ -323,7 +361,7 @@ export async function batchImportBlocks(
                 .from('semantic_links')
                 .insert(linksToInsert);
 
-            if (linkError) console.warn("Some links failed to create:", linkError);
+            if (linkError) console.warn("Some semantic links failed:", linkError);
         }
 
         return { success: true };

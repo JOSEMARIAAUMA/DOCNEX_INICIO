@@ -51,9 +51,108 @@ export default function KnowledgeGraph({
     const isDark = true; // Forcing dark for the "Space" look consistent with 3.0
     const bgColor = '#050505';
 
-    const [fogNear, setFogNear] = useState(20);
-    const [fogFar, setFogFar] = useState(250);
-    const [showControls, setShowControls] = useState(false);
+    const [fogNear, setFogNear] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('graph-settings-v2');
+                if (saved) return JSON.parse(saved).fogNear || 20;
+            } catch (e) { }
+        }
+        return 20;
+    });
+
+    const [fogFar, setFogFar] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('graph-settings-v2');
+                if (saved) return JSON.parse(saved).fogFar || 250;
+            } catch (e) { }
+        }
+        return 250;
+    });
+
+    const [nodeScale, setNodeScale] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('graph-settings-v2');
+                if (saved) return JSON.parse(saved).nodeScale || 1.0;
+            } catch (e) { }
+        }
+        return 1.0;
+    });
+
+    const [nodeDistortion, setNodeDistortion] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('graph-settings-v2');
+                if (saved) return JSON.parse(saved).nodeDistortion || 1.2;
+            } catch (e) { }
+        }
+        return 1.2;
+    });
+
+    const [showControls, setShowControls] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('graph-settings-v2');
+                if (saved) return JSON.parse(saved).showControls ?? false;
+            } catch (e) { }
+        }
+        return false;
+    });
+
+    // Persistence: load effect for hydration sync
+    useEffect(() => {
+        try {
+            const savedSettings = localStorage.getItem('graph-settings-v2');
+            if (savedSettings) {
+                const parsed = JSON.parse(savedSettings);
+                if (parsed.fogNear) setFogNear(parsed.fogNear);
+                if (parsed.fogFar) setFogFar(parsed.fogFar);
+                if (parsed.showControls !== undefined) setShowControls(parsed.showControls);
+            }
+        } catch (e) { }
+    }, []);
+
+    const saveSettings = (newNear: number, newFar: number, newShowControls: boolean, ns: number, nd: number) => {
+        try {
+            const settings = {
+                fogNear: newNear,
+                fogFar: newFar,
+                showControls: newShowControls,
+                nodeScale: ns,
+                nodeDistortion: nd
+            };
+            localStorage.setItem('graph-settings-v2', JSON.stringify(settings));
+        } catch (e) { }
+    };
+
+    // Persist settings wrappers
+    const updateFogNear = (val: number) => {
+        setFogNear(val);
+        saveSettings(val, fogFar, showControls, nodeScale, nodeDistortion);
+    };
+
+    const updateFogFar = (val: number) => {
+        setFogFar(val);
+        saveSettings(fogNear, val, showControls, nodeScale, nodeDistortion);
+    };
+
+    const updateNodeScale = (val: number) => {
+        setNodeScale(val);
+        saveSettings(fogNear, fogFar, showControls, val, nodeDistortion);
+    };
+
+    const updateNodeDistortion = (val: number) => {
+        setNodeDistortion(val);
+        saveSettings(fogNear, fogFar, showControls, nodeScale, val);
+    };
+
+    const toggleControls = () => {
+        const newVal = !showControls;
+        setShowControls(newVal);
+        saveSettings(fogNear, fogFar, newVal, nodeScale, nodeDistortion);
+    };
 
     // Apply fog to the scene whenever state changes
     useEffect(() => {
@@ -65,18 +164,29 @@ export default function KnowledgeGraph({
         }
     }, [fogNear, fogFar]);
 
-    // Custom node rendering for 3D
+    // Custom node rendering for 3D with hierarchy awareness
     const nodeThreeObject = useCallback((node: any) => {
         const obj = new THREE.Group();
 
-        // Sphere
-        const radius = node.type === 'current' ? 5 : (node.type === 'tag' ? 2.5 : 3.5);
+        // Sphere size based on hierarchy level with scale and distortion
+        let radius: number;
+        if (node.type === 'current') {
+            radius = 6 * nodeScale;
+        } else if (node.type === 'tag') {
+            radius = 2.5 * nodeScale;
+        } else if (node.hierarchyLevel !== undefined) {
+            // Formula: base * scale * distortion^(2-level)
+            radius = (1.5 * nodeScale) * Math.pow(nodeDistortion, (2 - node.hierarchyLevel));
+        } else {
+            radius = 3.5 * nodeScale;
+        }
+
         const geometry = new THREE.SphereGeometry(radius);
         const material = new THREE.MeshPhongMaterial({
-            color: node.color || '#d4ae7b',
+            color: node.color || '#f59e0b',
             transparent: true,
             opacity: 0.9,
-            emissive: node.color || '#d4ae7b',
+            emissive: node.color || '#f59e0b',
             emissiveIntensity: 0.7
         });
         const sphere = new THREE.Mesh(geometry, material);
@@ -85,18 +195,18 @@ export default function KnowledgeGraph({
         // Holographic Label Panel (Mini)
         const sprite = new SpriteText(node.label);
         sprite.color = '#ffffff';
-        sprite.textHeight = 1.5;
+        sprite.textHeight = node.hierarchyLevel === 0 ? 2 : node.hierarchyLevel === 1 ? 1.5 : 1.2;
         sprite.fontWeight = '600';
         sprite.padding = 2;
-        sprite.backgroundColor = 'rgba(212, 174, 123, 0.1)';
-        sprite.borderColor = 'rgba(212, 174, 123, 0.3)';
+        sprite.backgroundColor = node.hierarchyLevel === 2 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(212, 174, 123, 0.1)';
+        sprite.borderColor = node.hierarchyLevel === 2 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(212, 174, 123, 0.3)';
         sprite.borderWidth = 0.4;
         sprite.borderRadius = 0.4;
         (sprite as any).position.y = -(radius + 5);
         obj.add(sprite);
 
         return obj;
-    }, []);
+    }, [nodeScale, nodeDistortion]);
 
     const handleNodeClick = useCallback((node: any) => {
         if (onNodeClick) onNodeClick(node as AdapterNode);
@@ -167,7 +277,7 @@ export default function KnowledgeGraph({
                                 <input
                                     type="range" min="0" max="150" step="5"
                                     value={fogNear}
-                                    onChange={(e) => setFogNear(parseInt(e.target.value))}
+                                    onChange={(e) => updateFogNear(parseInt(e.target.value))}
                                     className="w-full h-0.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
                                 />
                             </div>
@@ -180,7 +290,33 @@ export default function KnowledgeGraph({
                                 <input
                                     type="range" min="50" max="1000" step="20"
                                     value={fogFar}
-                                    onChange={(e) => setFogFar(parseInt(e.target.value))}
+                                    onChange={(e) => updateFogFar(parseInt(e.target.value))}
+                                    className="w-full h-0.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+                                />
+                            </div>
+
+                            <div className="space-y-0.5">
+                                <div className="flex justify-between text-[7px] text-white/60">
+                                    <span>Escala</span>
+                                    <span>{Math.round(nodeScale * 100)}%</span>
+                                </div>
+                                <input
+                                    type="range" min="0.2" max="3" step="0.1"
+                                    value={nodeScale}
+                                    onChange={(e) => updateNodeScale(parseFloat(e.target.value))}
+                                    className="w-full h-0.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+                                />
+                            </div>
+
+                            <div className="space-y-0.5">
+                                <div className="flex justify-between text-[7px] text-white/60">
+                                    <span>Jerarquía</span>
+                                    <span>{nodeDistortion.toFixed(1)}x</span>
+                                </div>
+                                <input
+                                    type="range" min="0.5" max="4" step="0.1"
+                                    value={nodeDistortion}
+                                    onChange={(e) => updateNodeDistortion(parseFloat(e.target.value))}
                                     className="w-full h-0.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
                                 />
                             </div>
@@ -193,6 +329,12 @@ export default function KnowledgeGraph({
             <div className="absolute top-3 left-3 pointer-events-none z-10 flex flex-col gap-0.5">
                 <span className="text-[8px] font-black text-primary uppercase tracking-[0.3em]">Red Lógica</span>
                 <span className="text-[10px] font-bold text-white/50">3D Viewport</span>
+                {/* DEBUG OVERLAY */}
+                <div className="bg-red-900/50 text-white p-1 text-[8px] mt-2 border border-red-500/50 rounded">
+                    DEBUG: FogNear={fogNear}, LS={typeof window !== 'undefined' ? localStorage.getItem('graph-fog-near') : 'N/A'}<br />
+                    Nodes={data.nodes.length}, Links={data.links.length}<br />
+                    Level 3 Nodes: {data.nodes.filter(n => n.hierarchyLevel === 2).length}
+                </div>
             </div>
 
             <div className="absolute bottom-2 right-2 flex flex-col gap-1 opacity-100 transition-opacity z-20">

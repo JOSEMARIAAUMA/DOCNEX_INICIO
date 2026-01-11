@@ -5,6 +5,7 @@ import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { Map } from 'lucide-react';
 import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
+import { decodeHtmlEntities } from '@/lib/text-utils';
 
 const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), {
     ssr: false,
@@ -35,7 +36,7 @@ export default function LibraryCognitiveGraph({ resources, onResourceClick }: Li
     const graphData = useMemo(() => {
         const nodes = resources.map(res => ({
             id: res.id,
-            label: res.title,
+            label: decodeHtmlEntities(res.title),
             color: res.meta?.compliance_type === 'OBLIGATORY' ? '#ef4444' :
                 res.meta?.compliance_type === 'RECOMMENDATION' ? '#f59e0b' : '#3b82f6',
             val: res.meta?.range === 'ESTATAL' ? 10 : res.meta?.range === 'REGIONAL' ? 8 : 6,

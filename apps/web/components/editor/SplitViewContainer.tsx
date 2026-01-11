@@ -24,7 +24,8 @@ export function SplitViewContainer({
     const [isMaximized, setIsMaximized] = React.useState(false);
 
     if (!isOpen) {
-        return <div className="h-full w-full">{leftContent}</div>;
+        // Strict single panel mode
+        return <div className="h-full w-full relative">{leftContent}</div>;
     }
 
     return (

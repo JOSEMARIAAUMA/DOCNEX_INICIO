@@ -431,6 +431,14 @@ export default function DocumentEditorPage() {
                     >
                         Grafo
                     </button>
+                    <div className="w-[1px] h-4 bg-border/50 mx-1" />
+                    <button
+                        onClick={() => splitView.toggleSplitView()}
+                        className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 ${splitView.isOpen ? 'bg-primary/10 text-primary border border-primary/20' : 'text-muted-foreground hover:text-foreground'}`}
+                        title="Dividir pantalla (Vista paralela)"
+                    >
+                        <span className="text-lg leading-none mb-0.5">◫</span>
+                    </button>
                     <Link
                         href={`/documents/${documentId}/view`}
                         className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-all"
@@ -603,6 +611,7 @@ export default function DocumentEditorPage() {
                                             <SupportDocumentsSection
                                                 projectId={document.project_id}
                                                 activeBlockId={selectedBlockId || undefined}
+                                                allBlocks={blocks}
                                                 onCompare={(block) => {
                                                     splitView.openSplitView({
                                                         type: 'block',
@@ -628,6 +637,26 @@ export default function DocumentEditorPage() {
                                                     });
                                                 }}
                                             />
+                                        </Section>
+                                        <Section title="Etiquetas del Documento" icon="🏷️" count={Array.from(new Set(blocks.flatMap(b => b.tags || []))).length}>
+                                            <div className="flex flex-wrap gap-2 py-1">
+                                                {Array.from(new Set(blocks.flatMap(b => b.tags || []))).sort().map(tag => {
+                                                    const count = blocks.filter(b => b.tags?.includes(tag)).length;
+                                                    return (
+                                                        <div
+                                                            key={tag}
+                                                            className="flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 border border-primary/20 rounded-full text-[11px] font-bold text-primary transition-all hover:bg-primary/20 cursor-default"
+                                                            title={`${count} bloques con esta etiqueta`}
+                                                        >
+                                                            <span>{tag}</span>
+                                                            <span className="opacity-50 text-[9px]">{count}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {blocks.every(b => !b.tags || b.tags.length === 0) && (
+                                                    <p className="text-xs text-muted-foreground italic">Sin etiquetas detectadas</p>
+                                                )}
+                                            </div>
                                         </Section>
                                         <Section title="Versiones" icon="📸">
                                             <VersionsSection

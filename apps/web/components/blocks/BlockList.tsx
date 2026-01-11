@@ -43,19 +43,40 @@ export default function BlockList({
     const [menuBlockId, setMenuBlockId] = useState<string | null>(null);
     const [expandedBlockIds, setExpandedBlockIds] = useState<Set<string>>(new Set());
     const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+    const [levelFilter, setLevelFilter] = useState<'all' | 'titulo' | 'capitulo' | 'articulo'>('all');
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     );
 
+    // Calculate the hierarchy level of a block (0=root, 1=child, 2=grandchild)
+    const getBlockLevel = (block: { id: string; parent_block_id: string | null }): number => {
+        let level = 0;
+        let currentParentId = block.parent_block_id;
+        while (currentParentId) {
+            level++;
+            const parent = blocks.find(b => b.id === currentParentId);
+            if (!parent) break;
+            currentParentId = parent.parent_block_id;
+        }
+        return level;
+    };
+
+    // Filter blocks by hierarchy level
+    const filteredByLevel = useMemo(() => {
+        if (levelFilter === 'all') return blocks;
+        const targetLevel = { 'titulo': 0, 'capitulo': 1, 'articulo': 2 }[levelFilter];
+        return blocks.filter(b => getBlockLevel(b) === targetLevel);
+    }, [blocks, levelFilter]);
+
     // Filter visible blocks based on expansion state
     const visibleBlocks = useMemo(() => {
-        return blocks.filter(block => {
+        return filteredByLevel.filter(block => {
             if (!block.parent_block_id) return true;
             return expandedBlockIds.has(block.parent_block_id);
         });
-    }, [blocks, expandedBlockIds]);
+    }, [filteredByLevel, expandedBlockIds]);
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -229,6 +250,21 @@ export default function BlockList({
                             )}
                         </div>
                     </div>
+
+                    {/* Level Filter Dropdown */}
+                    <div className="mb-3">
+                        <select
+                            value={levelFilter}
+                            onChange={(e) => setLevelFilter(e.target.value as any)}
+                            className="w-full text-xs bg-muted border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                        >
+                            <option value="all">📋 Todos los niveles</option>
+                            <option value="titulo">🏛️ Solo Títulos (Nivel 0)</option>
+                            <option value="capitulo">📖 Solo Capítulos (Nivel 1)</option>
+                            <option value="articulo">📄 Solo Artículos (Nivel 2)</option>
+                        </select>
+                    </div>
+
                     <div className="flex gap-2">
                         <button
                             onClick={onAddBlock}
@@ -258,45 +294,84 @@ export default function BlockList({
                         items={visibleBlocks.map(b => b.id)}
                         strategy={verticalListSortingStrategy}
                     >
-                        {visibleBlocks.map(block => {
-                            const isChild = !!block.parent_block_id;
-                            const indentClass = isChild ? 'ml-6' : '';
-                            const hasChildren = blocks.some(b => b.parent_block_id === block.id);
-
-                            return (
-                                <div key={block.id} className={`relative ${indentClass}`}>
-                                    <SortableBlockItem
-                                        key={block.id}
-                                        block={block}
-                                        isSelected={selectedBlockId === block.id}
-                                        isMultiSelected={multiSelectedIds.has(block.id)}
-                                        isSelectionMode={isSelectionMode}
-                                        hasChildren={hasChildren}
-                                        isExpanded={expandedBlockIds.has(block.id)}
-                                        onClick={() => onSelectBlock(block.id)}
-                                        onMenuAction={(action) => handleMenuAction(block.id, action)}
-                                        onToggleExpand={() => toggleExpand(block.id)}
-                                        onToggleMultiSelect={() => toggleMultiSelect(block.id)}
-                                    />
-                                    {menuBlockId === block.id && (
-                                        <BlockActionsMenu
-                                            blockId={block.id}
-                                            onAction={(action) => handleMenuAction(block.id, action)}
-                                            onClose={() => setMenuBlockId(null)}
-                                        />
-                                    )}
-                                </div>
-                            );
-                        })}
+                        {renderTree(null)}
                     </SortableContext>
                 </DndContext>
 
-                {visibleBlocks.length === 0 && (
+                {blocks.length === 0 && (
                     <p className="text-center text-muted-foreground text-sm py-8 italic">
-                        {blocks.length === 0 ? 'Sin bloques aún' : 'Todos los bloques están contraídos'}
+                        Sin bloques aún
                     </p>
                 )}
             </div>
         </div>
     );
+
+    function renderTree(parentId: string | null, level: number = 0) {
+        const children = blocks.filter(b => b.parent_block_id === parentId);
+
+        // Debug hierarchy at root level
+        if (parentId === null) {
+            console.log(`[BlockList] Rendering Root. Found ${children.length} root blocks. Total blocks: ${blocks.length}`);
+            if (children.length > 0) {
+                console.log('[BlockList] First root:', children[0]);
+            } else if (blocks.length > 0) {
+                console.log('[BlockList] WARNING: No root blocks found but blocks exist! First block:', blocks[0]);
+            }
+        }
+
+        if (children.length === 0) return null;
+
+        // Sort children by order_index
+        const sortedChildren = children.sort((a, b) => a.order_index - b.order_index);
+
+        return sortedChildren.map(block => {
+            const hasChildren = blocks.some(b => b.parent_block_id === block.id);
+            const isVisible = !block.parent_block_id || expandedBlockIds.has(block.parent_block_id);
+
+            // If parent is not expanded, we don't render (unless we are root)
+            // But wait, the recursive call happens ONLY if parent is expanded (see below)
+            // The isVisible check here is redundant for children if we rely on the parent's generic rendering condition
+            // However, keep it safe.
+
+            // The top level logic passes null, so root items are always rendered.
+            // Recursive calls happen inside the conditional rendering below.
+
+            return (
+                <div key={block.id} className="relative">
+                    <SortableBlockItem
+                        block={block}
+                        isSelected={selectedBlockId === block.id}
+                        isMultiSelected={multiSelectedIds.has(block.id)}
+                        isSelectionMode={isSelectionMode}
+                        hasChildren={hasChildren}
+                        isExpanded={expandedBlockIds.has(block.id)}
+                        onClick={() => onSelectBlock(block.id)}
+                        onMenuAction={(action) => handleMenuAction(block.id, action)}
+                        onToggleExpand={() => toggleExpand(block.id)}
+                        onToggleMultiSelect={() => toggleMultiSelect(block.id)}
+                        level={level}
+                    />
+                    {menuBlockId === block.id && (
+                        <BlockActionsMenu
+                            blockId={block.id}
+                            onAction={(action) => handleMenuAction(block.id, action)}
+                            onClose={() => setMenuBlockId(null)}
+                        />
+                    )}
+                    {/* Recursive Rendering for Children */}
+                    {expandedBlockIds.has(block.id) && (
+                        <div className={`
+                            ${level === 0 ? 'ml-0 border-l-0' : 'ml-6 border-l-2 border-primary/20 pl-3'} 
+                            mt-1 space-y-1 animate-in slide-in-from-top-1 duration-200
+                        `}>
+                            {/* Recursive Debug */}
+                            {/* {console.log(`[BlockList] Rendering children for ${block.title} (Level ${level})`)} */}
+                            {renderTree(block.id, level + 1)}
+                        </div>
+                    )}
+                </div>
+            );
+        });
+    }
 }
