@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { DocumentBlock } from '@docnex/shared';
 import { decodeHtmlEntities } from '@/lib/text-utils';
+import ProvenanceTooltip from './ProvenanceTooltip';
 
 interface SortableBlockItemProps {
     block: DocumentBlock;
@@ -66,83 +67,85 @@ export default function SortableBlockItem({
     };
 
     return (
-        <div
-            ref={setNodeRef}
-            style={style}
-            className={`group flex items-center gap-2 p-2 rounded-md cursor-pointer border transition-all duration-200 ${getLevelStyles()}`}
-            onClick={onClick}
-        >
-            {/* Multi-select Checkbox - Only in Selection Mode */}
-            {isSelectionMode && (
-                <div
-                    className={`flex items-center justify-center w-5 h-5 rounded border transition-all ${isMultiSelected
-                        ? 'bg-primary border-primary text-primary-foreground'
-                        : 'border-border group-hover:border-primary/50'
-                        }`}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleMultiSelect?.();
-                    }}
-                >
-                    {isMultiSelected && (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                    )}
-                </div>
-            )}
-
-            {/* Expansion Toggle / Spacer */}
-            <div className="flex items-center justify-center w-5">
-                {hasChildren ? (
-                    <button
+        <ProvenanceTooltip blockId={block.id}>
+            <div
+                ref={setNodeRef}
+                style={style}
+                className={`group flex items-center gap-2 p-2 rounded-md cursor-pointer border transition-all duration-200 ${getLevelStyles()}`}
+                onClick={onClick}
+            >
+                {/* Multi-select Checkbox - Only in Selection Mode */}
+                {isSelectionMode && (
+                    <div
+                        className={`flex items-center justify-center w-5 h-5 rounded border transition-all ${isMultiSelected
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'border-border group-hover:border-primary/50'
+                            }`}
                         onClick={(e) => {
                             e.stopPropagation();
-                            onToggleExpand?.();
+                            onToggleMultiSelect?.();
                         }}
-                        className={`p-0.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-sm transition-transform duration-200`}
                     >
-                        {/* Use different chevron orientation or icon based on state if desired, but rotation is standard */}
-                        <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
-                    </button>
-                ) : (
-                    /* Dot for leaf nodes to align visual rhythm */
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />
+                        {isMultiSelected && (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                        )}
+                    </div>
                 )}
-            </div>
 
-            {/* Drag handle */}
-            <div
-                {...attributes}
-                {...listeners}
-                className="cursor-grab text-muted-foreground/40 hover:text-foreground px-1 transition-colors text-xs"
-                onClick={(e) => e.stopPropagation()}
-            >
-                ⋮⋮
-            </div>
+                {/* Expansion Toggle / Spacer */}
+                <div className="flex items-center justify-center w-5">
+                    {hasChildren ? (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleExpand?.();
+                            }}
+                            className={`p-0.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-sm transition-transform duration-200`}
+                        >
+                            {/* Use different chevron orientation or icon based on state if desired, but rotation is standard */}
+                            <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                    ) : (
+                        /* Dot for leaf nodes to align visual rhythm */
+                        <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/30" />
+                    )}
+                </div>
 
-            {/* Block title */}
-            <div className={`flex-1 truncate text-sm ${level === 0
-                ? 'font-bold text-foreground text-base py-0.5' // TÍTULO style
-                : level === 1
-                    ? 'font-semibold text-foreground/90' // CAPÍTULO style
-                    : 'text-muted-foreground' // ARTÍCULO style
-                }`}>
-                {decodeHtmlEntities(block.title)}
-            </div>
-
-            {/* Menu button */}
-            <div className="relative">
-                <button
-                    className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground px-1 transition-all"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onMenuAction('menu');
-                    }}
+                {/* Drag handle */}
+                <div
+                    {...attributes}
+                    {...listeners}
+                    className="cursor-grab text-muted-foreground/40 hover:text-foreground px-1 transition-colors text-xs"
+                    onClick={(e) => e.stopPropagation()}
                 >
-                    ⋯
-                </button>
+                    ⋮⋮
+                </div>
+
+                {/* Block title */}
+                <div className={`flex-1 truncate text-sm ${level === 0
+                    ? 'font-bold text-foreground text-base py-0.5' // TÍTULO style
+                    : level === 1
+                        ? 'font-semibold text-foreground/90' // CAPÍTULO style
+                        : 'text-muted-foreground' // ARTÍCULO style
+                    }`}>
+                    {decodeHtmlEntities(block.title)}
+                </div>
+
+                {/* Menu button */}
+                <div className="relative">
+                    <button
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground px-1 transition-all"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onMenuAction('menu');
+                        }}
+                    >
+                        ⋯
+                    </button>
+                </div>
             </div>
-        </div>
+        </ProvenanceTooltip>
     );
 }

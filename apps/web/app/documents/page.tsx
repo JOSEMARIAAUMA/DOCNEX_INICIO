@@ -249,9 +249,7 @@ export default function DocumentListPage() {
         <div className="h-screen flex bg-background overflow-hidden font-sans text-foreground">
             {/* Sidebar: Workspaces */}
             <aside className="w-24 border-r border-border bg-card flex flex-col items-center py-8 gap-6 shrink-0 z-50 shadow-xl overflow-hidden">
-                <Link href="/" className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20 hover:scale-105 transition-all mb-2">
-                    <Layout className="w-7 h-7 text-primary-foreground" />
-                </Link>
+                {/* Removido icono de landing page por redundancia con sidebar global */}
 
                 <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar w-full items-center px-1">
                     {workspaces.map(ws => (

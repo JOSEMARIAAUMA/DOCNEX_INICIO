@@ -5,6 +5,8 @@ import "./globals.css";
 import { Sidebar } from "@/components/ui/Sidebar";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { GlobalAICompanion } from "@/components/ai/GlobalAICompanion";
+import { RoadmapCompanion } from "@/components/ai/RoadmapCompanion";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -33,6 +35,8 @@ export default function RootLayout({
               {children}
             </main>
           </div>
+          <GlobalAICompanion />
+          <RoadmapCompanion />
         </ThemeProvider>
       </body>
     </html>

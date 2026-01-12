@@ -653,9 +653,11 @@ export const mergeBlocks = async (keepBlockId: string, mergeBlockId: string, sep
 };
 
 /**
- * Split a block at a given text position
+ * Split a block at a given Tiptap/ProseMirror position.
+ * Since we deal with HTML, we need to be careful. 
+ * For now, we take the HTML content and split it.
  */
-export const splitBlock = async (blockId: string, splitIndex: number): Promise<DocumentBlock | null> => {
+export const splitBlock = async (blockId: string, splitIndex: number, htmlContent?: string): Promise<DocumentBlock | null> => {
     // Get original block
     const { data: original, error: fetchError } = await supabase
         .from('document_blocks')
@@ -666,8 +668,13 @@ export const splitBlock = async (blockId: string, splitIndex: number): Promise<D
     if (fetchError) throw fetchError;
     if (!original) return null;
 
-    const beforeText = original.content.substring(0, splitIndex).trim();
-    const afterText = original.content.substring(splitIndex).trim();
+    // Use provided htmlContent if available (more accurate to current editor state)
+    const contentToSplit = htmlContent || original.content;
+
+    // Simple HTML split (this is naive but works for well-formed paragraphs)
+    // In a real Tiptap setup, we should probably pass the two halves from the client
+    const beforeText = contentToSplit.substring(0, splitIndex).trim();
+    const afterText = contentToSplit.substring(splitIndex).trim();
 
     // Update original with first part
     await supabase
@@ -683,10 +690,11 @@ export const splitBlock = async (blockId: string, splitIndex: number): Promise<D
         .from('document_blocks')
         .insert([{
             document_id: original.document_id,
-            title: `${original.title} (continued)`,
+            title: `${original.title} (cont.)`,
             content: afterText,
-            order_index: original.order_index + 0.5, // Will need normalization
-            block_type: original.block_type
+            order_index: original.order_index + 0.5,
+            block_type: original.block_type,
+            parent_block_id: original.parent_block_id
         }])
         .select()
         .single();
@@ -703,6 +711,55 @@ export const splitBlock = async (blockId: string, splitIndex: number): Promise<D
 
     if (allBlocks) {
         await reorderBlocks(original.document_id, allBlocks.map(b => b.id));
+    }
+
+    return newBlock;
+};
+
+/**
+ * Creates a new block from a selection, removing it from the original.
+ */
+export const extractToNewBlock = async (
+    sourceBlockId: string,
+    remainingContent: string,
+    newBlockContent: string,
+    newBlockTitle: string
+): Promise<DocumentBlock | null> => {
+    // 1. Update source block
+    await supabase
+        .from('document_blocks')
+        .update({ content: remainingContent, last_edited_at: new Date().toISOString() })
+        .eq('id', sourceBlockId);
+
+    // 2. Get source block metadata
+    const source = await getBlock(sourceBlockId);
+
+    // 3. Insert new block right after
+    const { data: newBlock, error } = await supabase
+        .from('document_blocks')
+        .insert([{
+            document_id: source.document_id,
+            title: newBlockTitle,
+            content: newBlockContent,
+            order_index: source.order_index + 0.5,
+            block_type: source.block_type,
+            parent_block_id: source.parent_block_id
+        }])
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    // 4. Reorder
+    const { data: allBlocks } = await supabase
+        .from('document_blocks')
+        .select('id')
+        .eq('document_id', source.document_id)
+        .eq('is_deleted', false)
+        .order('order_index', { ascending: true });
+
+    if (allBlocks) {
+        await reorderBlocks(source.document_id, allBlocks.map(b => b.id));
     }
 
     return newBlock;
@@ -1240,4 +1297,325 @@ export const importProjectFromJSON = async (jsonString: string, workspaceId: str
     }
 
     return project;
+};
+
+// ============================================================
+// RESEARCH SYNTHESIS: Research Sessions & Operations
+// ============================================================
+
+export interface ResearchSession {
+    id: string;
+    user_id: string;
+    project_id: string;
+    name: string;
+    source_document_ids: string[];
+    target_document_id: string | null;
+    status: 'active' | 'completed' | 'abandoned';
+    metadata: Record<string, unknown>;
+    created_at: string;
+    updated_at: string;
+    // Computed fields
+    document_count?: number;
+    project?: Project;
+}
+
+export interface SynthesisOperation {
+    id: string;
+    session_id: string;
+    operation_type: 'merge' | 'consolidate' | 'dedup' | 'conflict_resolution';
+    input_block_ids: string[];
+    output_block_id: string | null;
+    ai_reasoning: string | null;
+    user_approved: boolean | null;
+    metadata: Record<string, unknown>;
+    created_at: string;
+}
+
+/**
+ * List all research sessions for the current user
+ */
+export const listResearchSessions = async (
+    projectId?: string,
+    status?: 'active' | 'completed' | 'abandoned'
+): Promise<ResearchSession[]> => {
+    let query = supabase
+        .from('research_sessions')
+        .select(`
+            *,
+            project:projects(id, name)
+        `)
+        .order('updated_at', { ascending: false });
+
+    if (projectId) {
+        query = query.eq('project_id', projectId);
+    }
+    if (status) {
+        query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Error fetching research sessions:', error);
+        throw error;
+    }
+
+    // Compute document count for each session
+    return (data || []).map(session => ({
+        ...session,
+        document_count: session.source_document_ids?.length || 0
+    }));
+};
+
+/**
+ * Get a single research session by ID
+ */
+export const getResearchSession = async (id: string): Promise<ResearchSession | null> => {
+    const { data, error } = await supabase
+        .from('research_sessions')
+        .select(`
+            *,
+            project:projects(id, name, workspace_id)
+        `)
+        .eq('id', id)
+        .single();
+
+    if (error) {
+        console.error('Error fetching research session:', error);
+        throw error;
+    }
+
+    return data ? {
+        ...data,
+        document_count: data.source_document_ids?.length || 0
+    } : null;
+};
+
+/**
+ * Create a new research session
+ */
+export const createResearchSession = async (
+    projectId: string,
+    name: string,
+    sourceDocumentIds: string[],
+    description?: string
+): Promise<ResearchSession | null> => {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase
+        .from('research_sessions')
+        .insert([{
+            user_id: user?.id,
+            project_id: projectId,
+            name,
+            source_document_ids: sourceDocumentIds,
+            status: 'active',
+            metadata: { description: description || '' }
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating research session:', error);
+        throw error;
+    }
+
+    return data;
+};
+
+/**
+ * Update research session
+ */
+export const updateResearchSession = async (
+    id: string,
+    updates: Partial<Pick<ResearchSession, 'name' | 'status' | 'source_document_ids' | 'target_document_id' | 'metadata'>>
+): Promise<ResearchSession | null> => {
+    const { data, error } = await supabase
+        .from('research_sessions')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error updating research session:', error);
+        throw error;
+    }
+
+    return data;
+};
+
+/**
+ * Delete a research session
+ */
+export const deleteResearchSession = async (id: string): Promise<void> => {
+    const { error } = await supabase
+        .from('research_sessions')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw error;
+};
+
+/**
+ * Add documents to a research session
+ */
+export const addDocumentsToSession = async (
+    sessionId: string,
+    documentIds: string[]
+): Promise<ResearchSession | null> => {
+    // First get current docs
+    const session = await getResearchSession(sessionId);
+    if (!session) return null;
+
+    const existingIds = session.source_document_ids || [];
+    const newIds = [...new Set([...existingIds, ...documentIds])];
+
+    return updateResearchSession(sessionId, {
+        source_document_ids: newIds
+    });
+};
+
+/**
+ * Remove a document from a research session
+ */
+export const removeDocumentFromSession = async (
+    sessionId: string,
+    documentId: string
+): Promise<ResearchSession | null> => {
+    const session = await getResearchSession(sessionId);
+    if (!session) return null;
+
+    const updatedIds = (session.source_document_ids || []).filter(id => id !== documentId);
+
+    return updateResearchSession(sessionId, {
+        source_document_ids: updatedIds
+    });
+};
+
+/**
+ * List synthesis operations for a session
+ */
+export const listSynthesisOperations = async (sessionId: string): Promise<SynthesisOperation[]> => {
+    const { data, error } = await supabase
+        .from('synthesis_operations')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching synthesis operations:', error);
+        throw error;
+    }
+
+    return data || [];
+};
+
+/**
+ * Create a synthesis operation
+ */
+export const createSynthesisOperation = async (
+    sessionId: string,
+    operationType: SynthesisOperation['operation_type'],
+    inputBlockIds: string[],
+    aiReasoning?: string
+): Promise<SynthesisOperation | null> => {
+    const { data, error } = await supabase
+        .from('synthesis_operations')
+        .insert([{
+            session_id: sessionId,
+            operation_type: operationType,
+            input_block_ids: inputBlockIds,
+            ai_reasoning: aiReasoning
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating synthesis operation:', error);
+        throw error;
+    }
+
+    return data;
+};
+
+/**
+ * Update document quality rating (stored in metadata)
+ */
+export const updateDocumentQualityRating = async (
+    documentId: string,
+    qualityScore: number
+): Promise<Document | null> => {
+    // First get current metadata
+    const { data: doc } = await supabase
+        .from('documents')
+        .select('metadata')
+        .eq('id', documentId)
+        .single();
+
+    const currentMeta = doc?.metadata || {};
+
+    const { data, error } = await supabase
+        .from('documents')
+        .update({
+            metadata: {
+                ...currentMeta,
+                quality_score: qualityScore
+            },
+            updated_at: new Date().toISOString()
+        })
+        .eq('id', documentId)
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error updating quality rating:', error);
+        throw error;
+    }
+
+    return data;
+};
+
+/**
+ * List research documents (documents with category 'research' or tag 'INVESTIGACIÓN')
+ */
+export const listResearchDocuments = async (projectId?: string): Promise<Document[]> => {
+    let query = supabase
+        .from('documents')
+        .select('*')
+        .or('category.eq.research,tags.cs.{INVESTIGACIÓN}')
+        .order('updated_at', { ascending: false });
+
+    if (projectId) {
+        query = query.eq('project_id', projectId);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+        console.error('Error fetching research documents:', error);
+        return [];
+    }
+
+    return data || [];
+};
+
+/**
+ * Get documents by IDs (for session source documents lookup)
+ */
+export const getDocumentsByIds = async (ids: string[]): Promise<Document[]> => {
+    if (ids.length === 0) return [];
+
+    const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .in('id', ids);
+
+    if (error) {
+        console.error('Error fetching documents by IDs:', error);
+        return [];
+    }
+
+    return data || [];
 };

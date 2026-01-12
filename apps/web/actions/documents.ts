@@ -11,9 +11,26 @@ export async function importItems(
     projectId: string,
     documentId: string,
     items: ImportItem[],
-    importMode: 'replace' | 'merge' = 'merge'
+    importMode: 'replace' | 'merge' = 'merge',
+    metadata?: any
 ): Promise<ImportResult> {
     let count = 0;
+
+    // Track if this is a research document for provenance
+    const isResearchDoc = metadata?.isResearch === true;
+
+    // Update document metadata if provided
+    if (metadata) {
+        await supabase
+            .from('documents')
+            .update({
+                metadata: metadata,
+                project_id: metadata.projectId || projectId,
+                // You might want to update other fields like description if they exist in metadata
+                description: metadata.comments || undefined
+            })
+            .eq('id', documentId);
+    }
 
     // 1) Log the start of an import and capture snapshot if replacing
     if (importMode === 'replace') {
@@ -105,6 +122,22 @@ export async function importItems(
 
                 if (error) throw new Error(error.message);
                 count++;
+
+                // Create provenance record for research documents
+                if (isResearchDoc && newBlock) {
+                    await supabase.from('block_provenance').insert({
+                        block_id: newBlock.id,
+                        source_document_id: documentId,
+                        source_block_id: null, // This is the original source
+                        contribution_type: 'original',
+                        contribution_percentage: 100,
+                        confidence_score: 1.0,
+                        metadata: {
+                            imported_from: 'ai_import_wizard',
+                            research_classification: true
+                        }
+                    });
+                }
 
                 if (item.children && item.children.length > 0) {
                     await insertItemsRecursive(item.children, newBlock.id);

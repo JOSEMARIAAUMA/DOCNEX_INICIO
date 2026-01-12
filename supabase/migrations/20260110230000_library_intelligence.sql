@@ -7,7 +7,7 @@ COMMENT ON COLUMN resources.theme IS 'Semantic theme detected by AI (e.g., Jurí
 
 -- 2. Create Library Experiences Table
 CREATE TABLE IF NOT EXISTS library_experiences (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     resource_id UUID NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
     project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
     block_id UUID REFERENCES document_blocks(id) ON DELETE SET NULL,

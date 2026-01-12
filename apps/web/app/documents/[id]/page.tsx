@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Document, DocumentBlock, Resource, BlockVersion } from '@docnex/shared';
-import { ChevronLeft, ChevronRight, Search, Wand2, Eye, X, MessageSquare, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Wand2, Eye, X, MessageSquare, Sparkles, CheckCircle2, AlertTriangle, Info, Send } from 'lucide-react';
 import {
     getDocument,
     listActiveBlocks,
@@ -24,8 +24,12 @@ import {
     updateBlockTitle,
     resolveBlockComment,
     listSemanticLinks,
-    listDocumentComments
+    listDocumentComments,
+    extractToNewBlock,
+    getBlock
 } from '@/lib/api';
+import { runResearchAnalysis, generateBriefingsAction, runDocumentAuditAction, exportDocumentAction, generateScaffoldAction } from '@/actions/ai';
+import BriefingPanel from '@/components/panels/BriefingPanel';
 
 import BlockList from '@/components/blocks/BlockList';
 import BlockContentEditor from '@/components/blocks/BlockContentEditor';
@@ -37,6 +41,7 @@ import HistorySection from '@/components/panels/HistorySection';
 import VersionsSection from '@/components/panels/VersionsSection';
 import { AIImportWizard } from '@/components/ai-import-wizard';
 import NoteDetailsPanel from '@/components/notes/NoteDetailsPanel';
+import { LayerControlPanel } from '@/components/viewer/LayerControlPanel';
 const SemanticGraph = dynamic(() => import('@/components/graph/SemanticGraph'), { ssr: false });
 import { BlockComment } from '@docnex/shared';
 import { useAutoSnapshot } from '@/hooks/useAutoSnapshot';
@@ -44,7 +49,13 @@ import { createSnapshot, getSnapshotDescription } from '@/lib/snapshot-utils';
 import { useSplitView } from '@/hooks/useSplitView';
 import { SplitViewContainer } from '@/components/editor/SplitViewContainer';
 import { ResourceIntegratedViewer } from '@/components/resources/ResourceIntegratedViewer';
-import { LucideEye } from 'lucide-react';
+import { LucideEye, GitBranch } from 'lucide-react';
+import SourceLineageSection from '@/components/panels/SourceLineageSection';
+import MultiDocSplitView, { DocumentPane } from '@/components/editor/MultiDocSplitView';
+import MultiDocDiff from '@/components/synthesis/MultiDocDiff';
+import SimilarityMatrix from '@/components/synthesis/SimilarityMatrix';
+import SynthesisPanel from '@/components/synthesis/SynthesisPanel';
+import ScaffoldWizard from '@/components/ai/ScaffoldWizard';
 
 export default function DocumentEditorPage() {
     const params = useParams();
@@ -71,6 +82,29 @@ export default function DocumentEditorPage() {
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [rightPanelWidth, setRightPanelWidth] = useState(320);
     const [isResizing, setIsResizing] = useState(false);
+    const [showResearch, setShowResearch] = useState(false);
+    const [researchInsights, setResearchInsights] = useState<any[]>([]);
+    const [isResearching, setIsResearching] = useState(false);
+
+    // Audit State
+    const [showAudit, setShowAudit] = useState(false);
+    const [auditFindings, setAuditFindings] = useState<any[]>([]);
+    const [isAuditing, setIsAuditing] = useState(false);
+
+    // Briefings State
+    const [briefing, setBriefing] = useState<string | undefined>(undefined);
+    const [imagePrompts, setImagePrompts] = useState<string | undefined>(undefined);
+    const [isGeneratingBriefings, setIsGeneratingBriefings] = useState(false);
+
+    // Synthesis State
+    const [isSynthesisOpen, setIsSynthesisOpen] = useState(false);
+    const [synthesizedContent, setSynthesizedContent] = useState<string | undefined>(undefined);
+    const [isGeneratingSynthesis, setIsGeneratingSynthesis] = useState(false);
+
+    // Scaffolding State
+    const [isScaffoldWizardOpen, setIsScaffoldWizardOpen] = useState(false);
+    const [isGeneratingScaffold, setIsGeneratingScaffold] = useState(false);
+
     const splitView = useSplitView();
 
     // Auto-snapshot hook
@@ -171,6 +205,126 @@ export default function DocumentEditorPage() {
             loadData();
         }
     }, [documentId, loadData]);
+
+    const fetchResearchInsights = useCallback(async () => {
+        if (!document || blocks.length === 0 || isResearching) return;
+
+        setIsResearching(true);
+        try {
+            const content = blocks.map(b => `${b.title}\n${b.content}`).join('\n\n');
+            const result = await runResearchAnalysis(content, document.project_id);
+            if (result.success && result.insights) {
+                setResearchInsights(result.insights);
+            }
+        } catch (err) {
+            console.error("Error fetching research insights:", err);
+        } finally {
+            setIsResearching(false);
+        }
+    }, [document, blocks, isResearching]);
+
+    useEffect(() => {
+        if (showResearch && researchInsights.length === 0) {
+            fetchResearchInsights();
+        }
+    }, [showResearch, researchInsights.length, fetchResearchInsights]);
+
+    const handleGenerateBriefings = async () => {
+        if (!document || blocks.length === 0) return;
+        setIsGeneratingBriefings(true);
+        try {
+            const content = blocks.map(b => `${b.title}\n${b.content}`).join('\n\n');
+            const result = await generateBriefingsAction(
+                content,
+                "Generar informe de impacto Ley 5/2025 para promotores y arquitectos",
+                "Promotores inmobiliarios y Arquitectos de Andalucía"
+            );
+            if (result.success) {
+                setBriefing(result.briefing);
+                setImagePrompts(result.imagePrompts);
+            }
+        } catch (err) {
+            console.error("Error generating briefings:", err);
+        } finally {
+            setIsGeneratingBriefings(false);
+        }
+    };
+
+    const fetchAuditFindings = useCallback(async () => {
+        if (!document || blocks.length === 0 || isAuditing) return;
+
+        setIsAuditing(true);
+        try {
+            const content = blocks.map(b => `${b.title}\n${b.content}`).join('\n\n');
+            const result = await runDocumentAuditAction(
+                content,
+                blocks.map(b => ({ id: b.id, title: b.title })),
+                document.description || "Inconsistency and Logic Audit"
+            );
+            if (result.success && result.findings) {
+                setAuditFindings(result.findings);
+            }
+        } catch (err) {
+            console.error("Error fetching audit findings:", err);
+        } finally {
+            setIsAuditing(false);
+        }
+    }, [document, blocks, isAuditing]);
+
+    useEffect(() => {
+        if (showAudit && auditFindings.length === 0) {
+            fetchAuditFindings();
+        }
+    }, [showAudit, auditFindings.length, fetchAuditFindings]);
+
+    const handleGenerateSynthesis = async () => {
+        if (!document) return;
+        setIsGeneratingSynthesis(true);
+        try {
+            const result = await exportDocumentAction(
+                document,
+                blocks,
+                researchInsights,
+                auditFindings,
+                briefing
+            );
+            if (result.success && result.synthesizedContent) {
+                setSynthesizedContent(result.synthesizedContent);
+            }
+        } catch (err) {
+            console.error("Synthesis failed:", err);
+        } finally {
+            setIsGeneratingSynthesis(false);
+        }
+    };
+
+    const handleGenerateScaffold = async (objective: string) => {
+        if (!document) return;
+        setIsGeneratingScaffold(true);
+        try {
+            const result = await generateScaffoldAction({ title: document.title, description: objective });
+            if (result.success && result.structure) {
+                // Sequential creation to maintain order
+                for (let i = 0; i < result.structure.length; i++) {
+                    const blockData = result.structure[i];
+                    const newBlock = await createBlock(documentId, blockData.content, i, blockData.title);
+
+                    if (newBlock && blockData.subblocks) {
+                        for (let j = 0; j < blockData.subblocks.length; j++) {
+                            const subData = blockData.subblocks[j];
+                            await createSubBlock(documentId, newBlock.id, subData.content, j, subData.title);
+                        }
+                    }
+                }
+                await loadData();
+                setIsScaffoldWizardOpen(false);
+            }
+        } catch (err) {
+            console.error("Scaffolding failed:", err);
+        } finally {
+            setIsGeneratingScaffold(false);
+        }
+    };
 
 
     const [showAIWizard, setShowAIWizard] = useState(false);
@@ -302,12 +456,27 @@ export default function DocumentEditorPage() {
                     });
                 }
                 break;
+            case 'extract-selection':
+                // This action requires text selection, so we just set the block as selected
+                // The actual extraction is handled by BlockContentEditor's handleExtractSelectionAction
+                setSelectedBlockId(blockId);
+                alert('Por favor, selecciona el texto que deseas extraer en el editor y luego haz clic en el botón "Extraer Selección" en el menú "..." del bloque.');
+                break;
         }
     };
 
-    const handleSplit = async (splitIndex: number) => {
+    const handleSplit = async (splitIndex: number, currentHtml: string) => {
         if (!selectedBlockId) return;
-        const newBlock = await splitBlock(selectedBlockId, splitIndex);
+        const newBlock = await splitBlock(selectedBlockId, splitIndex, currentHtml);
+        if (newBlock) {
+            await loadData();
+            setSelectedBlockId(newBlock.id);
+        }
+    };
+
+    const handleExtractToNewBlock = async (remainingContent: string, newBlockContent: string, newBlockTitle: string) => {
+        if (!selectedBlockId) return;
+        const newBlock = await extractToNewBlock(selectedBlockId, remainingContent, newBlockContent, newBlockTitle);
         if (newBlock) {
             await loadData();
             setSelectedBlockId(newBlock.id);
@@ -358,6 +527,72 @@ export default function DocumentEditorPage() {
                 content: item.content,
                 label: 'REFERENCIA'
             });
+        }
+    };
+
+    const handleMultiAnalyze = async (docIds: string[], mode: 'split' | 'diff' | 'matrix') => {
+        try {
+            // Always include current document
+            const allDocIds = Array.from(new Set([documentId, ...docIds]));
+
+            // Limit to 4 for performance/UI
+            if (allDocIds.length > 4) {
+                alert('Máximo 4 documentos permitidos');
+                return;
+            }
+
+            setLoading(true);
+
+            const panes: DocumentPane[] = await Promise.all(allDocIds.map(async (id, index) => {
+                let title = '';
+                let blocksData: DocumentBlock[] = [];
+
+                if (id === documentId && document) {
+                    title = document.title;
+                    blocksData = blocks;
+                } else {
+                    const doc = await getDocument(id);
+                    if (!doc) throw new Error(`Document not found: ${id}`);
+                    title = doc.title;
+                    blocksData = await listActiveBlocks(id);
+                }
+
+                return {
+                    id: `pane-${id}`,
+                    documentId: id,
+                    title: title,
+                    content: blocksData.map(b => b.content).join('\n\n'),
+                    color: ['#3b82f6', '#22c55e', '#f97316', '#a855f7', '#ec4899'][index % 5],
+                    blocks: blocksData.map(b => ({ id: b.id, title: b.title, content: b.content }))
+                };
+            }));
+
+            const splitData = { documents: panes };
+
+            if (mode === 'split') {
+                splitView.openSplitView({
+                    type: 'multi-doc',
+                    title: 'Comparación',
+                    data: splitData
+                });
+            } else if (mode === 'diff') {
+                splitView.openSplitView({
+                    type: 'diff',
+                    title: 'Diferencias',
+                    data: splitData
+                });
+            } else if (mode === 'matrix') {
+                splitView.openSplitView({
+                    type: 'similarity',
+                    title: 'Matriz de Similitud',
+                    data: splitData
+                });
+            }
+        } catch (error) {
+            console.error('Analysis error:', error);
+            alert('Error al cargar documentos para análisis');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -420,6 +655,14 @@ export default function DocumentEditorPage() {
                 </div>
                 <div className="flex items-center gap-2 bg-muted/20 p-1 rounded-xl border border-border/50 backdrop-blur-md">
                     <button
+                        onClick={() => setIsSynthesisOpen(true)}
+                        className="text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg transition-all bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 shadow-sm border border-emerald-500/20 flex items-center gap-2"
+                    >
+                        <Send className="w-3 h-3" />
+                        Finalizar y Exportar
+                    </button>
+                    <div className="w-[1px] h-4 bg-border/40 mx-1" />
+                    <button
                         onClick={() => setShowGraph(false)}
                         className={`text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-lg transition-all ${!showGraph ? 'bg-background text-primary shadow-sm border border-border' : 'text-muted-foreground hover:text-foreground'}`}
                     >
@@ -449,6 +692,13 @@ export default function DocumentEditorPage() {
 
                 <div className="flex items-center gap-3">
                     <button
+                        onClick={() => setIsScaffoldWizardOpen(true)}
+                        className="text-[10px] font-black uppercase tracking-widest text-primary hover:opacity-90 flex items-center gap-1.5 bg-primary/10 px-4 py-1.5 rounded-xl hover:bg-primary/20 transition-all font-bold"
+                    >
+                        <Wand2 className="w-3 h-3" />
+                        Auto-Estructura
+                    </button>
+                    <button
                         onClick={() => setShowAIWizard(true)}
                         className="text-[10px] font-black uppercase tracking-widest text-primary hover:opacity-90 flex items-center gap-1.5 bg-primary/10 px-4 py-1.5 rounded-xl hover:bg-primary/20 transition-all font-bold"
                     >
@@ -459,6 +709,32 @@ export default function DocumentEditorPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Researcher Proactive Suggestions Bar */}
+            {showResearch && researchInsights.length > 0 && (
+                <div className="h-10 bg-amber-500/10 border-b border-amber-500/20 px-6 flex items-center gap-4 animate-in slide-in-from-top duration-300">
+                    <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
+                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Hallazgos del Investigador (v2.5):</span>
+                    <div className="flex gap-4 overflow-x-auto no-scrollbar flex-1">
+                        {researchInsights.map((insight, i) => (
+                            <div key={i} className="flex items-center gap-2 whitespace-nowrap">
+                                <span className="text-[10px] font-bold text-amber-700 bg-amber-500/20 px-2 py-0.5 rounded-full uppercase">
+                                    {insight.type === 'compliance' ? 'Normativa' : 'Analogía'}
+                                </span>
+                                <span className="text-[10px] text-amber-900 font-medium truncate max-w-sm">
+                                    {insight.message || insight.suggestion}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                    <button
+                        onClick={() => setShowResearch(false)}
+                        className="text-[9px] font-bold text-amber-600 hover:text-amber-800 uppercase"
+                    >
+                        [Ocultar Inteligencia]
+                    </button>
+                </div>
+            )}
 
             {/* Main Layout */}
             <div className="flex-1 flex overflow-hidden relative">
@@ -484,6 +760,11 @@ export default function DocumentEditorPage() {
                                         setSelectedBlockId(id);
                                         setShowGraph(false);
                                     }
+                                }}
+                                auditFindings={auditFindings}
+                                onLinkNodes={async (sourceId, targetId) => {
+                                    await createLink(sourceId, targetId);
+                                    await loadData();
                                 }}
                             />
                         </div>
@@ -527,6 +808,26 @@ export default function DocumentEditorPage() {
 
                         {/* Center: Editor */}
                         <div className="flex-1 bg-background overflow-hidden flex flex-col h-full">
+                            {/* Proactive Findings Bar: Research & Audit */}
+                            {(showResearch && researchInsights.length > 0) || (showAudit && auditFindings.length > 0) ? (
+                                <div className="h-10 border-b flex items-center gap-4 px-6 animate-in slide-in-from-top duration-300 overflow-x-auto whitespace-nowrap bg-muted/30 shrink-0">
+                                    {showResearch && researchInsights.map((insight, idx) => (
+                                        <div key={`res-${idx}`} className="flex items-center gap-2 text-[11px] font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                                            <Sparkles className="w-3 h-3" />
+                                            <span>{insight.message || insight.suggestion}</span>
+                                        </div>
+                                    ))}
+                                    {showAudit && auditFindings.map((finding, idx) => (
+                                        <div key={`aud-${idx}`} className={`flex items-center gap-2 text-[11px] font-medium px-2 py-0.5 rounded-full border ${finding.severity === 'high' ? 'text-rose-500 bg-rose-500/10 border-rose-500/20' :
+                                            finding.severity === 'medium' ? 'text-amber-500 bg-amber-500/10 border-amber-500/20' :
+                                                'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
+                                            }`}>
+                                            <AlertTriangle className="w-3 h-3" />
+                                            <span>[Audit] {finding.message}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
                             <SplitViewContainer
                                 isOpen={splitView.isOpen}
                                 onClose={splitView.closeSplitView}
@@ -540,6 +841,7 @@ export default function DocumentEditorPage() {
                                             onUpdate={loadData}
                                             onSplit={handleSplit}
                                             onCreateBlock={handleCreateBlockFromSelection}
+                                            onExtractSelection={handleExtractToNewBlock}
                                             comparingItem={comparingItem}
                                             onCloseCompare={() => setComparingItem(null)}
                                             onVersionUpdated={handleDataRefresh}
@@ -548,6 +850,10 @@ export default function DocumentEditorPage() {
                                                 splitView.openSplitView(content);
                                             }}
                                             refreshTrigger={refreshTrigger}
+                                            showResearch={showResearch}
+                                            researchInsights={researchInsights}
+                                            showAudit={showAudit}
+                                            auditFindings={auditFindings}
                                         />
                                     ) : (
                                         <div className="h-full flex items-center justify-center text-muted-foreground italic">
@@ -567,6 +873,26 @@ export default function DocumentEditorPage() {
                                             <ResourceIntegratedViewer
                                                 resourceId={splitView.content.id || ''}
                                                 title={splitView.content.title || ''}
+                                            />
+                                        )}
+                                        {splitView.content?.type === 'multi-doc' && (
+                                            <MultiDocSplitView
+                                                documents={splitView.content.data?.documents || []}
+                                                onClose={splitView.closeSplitView}
+                                            />
+                                        )}
+                                        {splitView.content?.type === 'diff' && (
+                                            <MultiDocDiff
+                                                documents={splitView.content.data?.documents || []}
+                                                onClose={splitView.closeSplitView}
+                                            />
+                                        )}
+                                        {splitView.content?.type === 'similarity' && (
+                                            <SimilarityMatrix
+                                                documents={splitView.content.data?.documents || []}
+                                                onCellClick={(doc1, doc2) => {
+                                                    // Handle compare logic if needed
+                                                }}
                                             />
                                         )}
                                     </div>
@@ -620,6 +946,7 @@ export default function DocumentEditorPage() {
                                                         content: block.content
                                                     });
                                                 }}
+                                                onMultiAnalyze={handleMultiAnalyze}
                                             />
                                         </Section>
                                         <Section title="Recursos" icon="📎" count={resources.length}>
@@ -679,6 +1006,34 @@ export default function DocumentEditorPage() {
                                                 refreshTrigger={refreshTrigger}
                                             />
                                         </Section>
+                                        <Section title="Potenciación IA" icon="🚀">
+                                            <BriefingPanel
+                                                briefing={briefing}
+                                                imagePrompts={imagePrompts}
+                                                isLoading={isGeneratingBriefings}
+                                                onGenerate={handleGenerateBriefings}
+                                            />
+                                        </Section>
+                                        <Section title="Linaje de Fuentes" icon="🧬">
+                                            <SourceLineageSection
+                                                blockId={selectedBlockId || ''}
+                                                onNavigateToSource={async (docId, blkId) => {
+                                                    try {
+                                                        const block = await getBlock(blkId);
+                                                        if (block) {
+                                                            splitView.openSplitView({
+                                                                type: 'block',
+                                                                id: block.id,
+                                                                title: block.title,
+                                                                content: block.content
+                                                            });
+                                                        }
+                                                    } catch (e) {
+                                                        console.error('Error traversing lineage:', e);
+                                                    }
+                                                }}
+                                            />
+                                        </Section>
                                     </SidePanel>
                                     <NoteDetailsPanel
                                         isOpen={isDetailOpen}
@@ -710,7 +1065,42 @@ export default function DocumentEditorPage() {
                         )}
                     </>
                 )}
+                {/* Layer Control Panel (Floating) */}
+                <LayerControlPanel
+                    showMapping={false} // Editor doesn't use all viewer flags yet
+                    setShowMapping={() => { }}
+                    showNotes={true} // Simplified for editor logic
+                    setShowNotes={() => { }}
+                    showTags={false}
+                    setShowTags={() => { }}
+                    showSubBlocks={false}
+                    setShowSubBlocks={() => { }}
+                    showSupport={true}
+                    setShowSupport={() => { }}
+                    showVersions={true}
+                    setShowVersions={() => { }}
+                    showResearch={showResearch}
+                    setShowResearch={setShowResearch}
+                    showAudit={showAudit}
+                    setShowAudit={setShowAudit}
+                />
             </div>
-        </div>
+
+            <SynthesisPanel
+                isOpen={isSynthesisOpen}
+                onClose={() => setIsSynthesisOpen(false)}
+                onGenerate={handleGenerateSynthesis}
+                synthesizedContent={synthesizedContent}
+                isGenerating={isGeneratingSynthesis}
+            />
+
+            <ScaffoldWizard
+                isOpen={isScaffoldWizardOpen}
+                onClose={() => setIsScaffoldWizardOpen(false)}
+                onGenerate={handleGenerateScaffold}
+                isGenerating={isGeneratingScaffold}
+                documentTitle={document.title}
+            />
+        </div >
     );
 }

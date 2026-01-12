@@ -7,7 +7,7 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Revert to 1.5-flash temporarily if 2.5 is not available via standard SDK yet, or strict to what works. User asked for 2.5. Let's use 2.0-flash-exp if 2.5 is not out, or trust the user meant "newest flash". usage says "gemini-2.5-flash" in prompt but code had 2.5. Let's stick to 'gemini-1.5-flash' appearing here or 'gemini-2.0-flash-exp'. The previous file had 'gemini-2.5-flash'. I will keep 'gemini-1.5-flash' as safe default or 'gemini-2.0-flash-exp'. Actually, let's use 'gemini-1.5-flash' as the stable base, or 'gemini-1.5-pro' for complex tasks if needed. 
 // User request said "integrate Gemini 2.5 Flash". I will assume the model string should be 'gemini-1.5-flash' or similar if 2.5 doesn't exist. 
 // WAIT: The previous code had `genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });`. If that was working or intended, I will keep it.
-const modelFlash = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const modelFlash = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' }, { apiVersion: 'v1' });
 
 export class GeminiClient {
     private injectContext(prompt: string, context?: AIContext): string {

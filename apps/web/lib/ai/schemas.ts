@@ -4,19 +4,21 @@ import { z } from 'zod';
 export type BlockItem = {
     title: string;
     content: string;
-    target: "active_version" | "version" | "linked_ref" | "unlinked_ref" | "note";
+    target: "active_version" | "version" | "linked_ref" | "unlinked_ref" | "note" | "section" | "main_content";
     hierarchy_level?: 0 | 1 | 2; // 0=TÍTULO, 1=CAPÍTULO, 2=ARTÍCULO
+    order_index?: number;
     children?: BlockItem[];
 };
 
 export const BlockItemSchema: z.ZodType<BlockItem> = z.object({
     title: z.string().describe('Título descriptivo del bloque (corto para normativa: TITULO I, CAPITULO 3, etc.)'),
     content: z.string().describe('Contenido completo del bloque en formato HTML o Markdown'),
-    target: z.enum(['active_version', 'version', 'linked_ref', 'unlinked_ref', 'note'])
+    target: z.enum(['active_version', 'version', 'linked_ref', 'unlinked_ref', 'note', 'section', 'main_content'])
         .default('active_version')
         .describe('Destino donde se importará este bloque'),
     hierarchy_level: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional()
         .describe('Nivel jerárquico: 0=TÍTULO, 1=CAPÍTULO, 2=ARTÍCULO'),
+    order_index: z.number().optional().describe('Índice de orden del bloque'),
     children: z.lazy(() => z.array(BlockItemSchema)).optional()
         .describe('Sub-bloques opcionales (jerarquía de hasta 3 niveles)')
 });

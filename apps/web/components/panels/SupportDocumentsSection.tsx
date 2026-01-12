@@ -17,6 +17,7 @@ interface SupportDocumentsSectionProps {
     onCompare: (block: DocumentBlock) => void;
     activeBlockId?: string;
     allBlocks?: DocumentBlock[];
+    onMultiAnalyze?: (docIds: string[], mode: 'split' | 'diff' | 'matrix') => void;
 }
 
 interface NetworkConnection {
@@ -25,7 +26,7 @@ interface NetworkConnection {
     sourceBlock?: DocumentBlock;
 }
 
-export default function SupportDocumentsSection({ projectId, onCompare, activeBlockId, allBlocks }: SupportDocumentsSectionProps) {
+export default function SupportDocumentsSection({ projectId, onCompare, activeBlockId, allBlocks, onMultiAnalyze }: SupportDocumentsSectionProps) {
     const [category, setCategory] = useState<SupportCategory>('network');
     const [docs, setDocs] = useState<Document[]>([]);
     const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
 
     // Graph state
     const [activeBlockTitle, setActiveBlockTitle] = useState('Bloque Activo');
+    const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
 
     const loadNetwork = useCallback(async () => {
         if (!activeBlockId) return;
@@ -301,59 +303,121 @@ export default function SupportDocumentsSection({ projectId, onCompare, activeBl
                             No hay documentos en esta categoría
                         </div>
                     ) : (
-                        docs.map((doc) => (
-                            <div key={doc.id} className="space-y-1">
-                                <button
-                                    onClick={() => toggleDoc(doc.id)}
-                                    className={cn(
-                                        "w-full flex items-center gap-2 p-3 rounded-lg border text-left transition-all",
-                                        expandedDocId === doc.id
-                                            ? "bg-primary/5 border-primary/20 ring-1 ring-primary/10"
-                                            : "bg-card border-border hover:border-primary/30"
-                                    )}
-                                >
-                                    {expandedDocId === doc.id ? <ChevronDown className="w-4 h-4 text-primary" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                                    <FileText className="w-4 h-4 text-primary/60" />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate text-foreground">{doc.title}</p>
-                                        <p className="text-[10px] text-muted-foreground">
-                                            {new Date(doc.updated_at).toLocaleDateString('es-ES')}
-                                        </p>
-                                    </div>
-                                </button>
-
-                                {expandedDocId === doc.id && (
-                                    <div className="pl-6 space-y-2 mt-2 border-l-2 border-primary/10">
-                                        {blocks[doc.id]?.map((block) => (
-                                            <Card key={block.id} className="group hover:border-primary/30 transition-all shadow-none bg-muted/30">
-                                                <CardContent className="p-3 space-y-2">
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <h4 className="text-xs font-semibold text-foreground truncate flex-1">{block.title}</h4>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-6 px-2 text-[10px] bg-primary/10 hover:bg-primary hover:text-primary-foreground"
-                                                            onClick={() => onCompare(block)}
-                                                        >
-                                                            Comparar
-                                                        </Button>
-                                                    </div>
-                                                    <p className="text-[10px] text-muted-foreground line-clamp-3 leading-relaxed">
-                                                        {block.content}
-                                                    </p>
-                                                </CardContent>
-                                            </Card>
-                                        ))}
-                                        {blocks[doc.id]?.length === 0 && (
-                                            <p className="text-[10px] text-muted-foreground italic p-2">Este documento no tiene bloques</p>
+                        <> {
+                            docs.map((doc) => (
+                                <div key={doc.id} className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        {onMultiAnalyze && (
+                                            <input
+                                                type="checkbox"
+                                                className="rounded border-border w-4 h-4 cursor-pointer accent-primary"
+                                                checked={selectedDocs.includes(doc.id)}
+                                                onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    if (selectedDocs.includes(doc.id)) {
+                                                        setSelectedDocs(prev => prev.filter(id => id !== doc.id));
+                                                    } else {
+                                                        if (selectedDocs.length >= 3) {
+                                                            alert('Máximo 4 documentos permitidos para comparación (incluyendo el actual)');
+                                                            return;
+                                                        }
+                                                        setSelectedDocs(prev => [...prev, doc.id]);
+                                                    }
+                                                }}
+                                            />
                                         )}
+                                        <button
+                                            onClick={() => toggleDoc(doc.id)}
+                                            className={cn(
+                                                "w-full flex items-center gap-2 p-3 rounded-lg border text-left transition-all",
+                                                expandedDocId === doc.id
+                                                    ? "bg-primary/5 border-primary/20 ring-1 ring-primary/10"
+                                                    : "bg-card border-border hover:border-primary/30"
+                                            )}
+                                        >
+                                            {expandedDocId === doc.id ? <ChevronDown className="w-4 h-4 text-primary" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                                            <FileText className="w-4 h-4 text-primary/60" />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-medium truncate text-foreground">{doc.title}</p>
+                                                <p className="text-[10px] text-muted-foreground">
+                                                    {new Date(doc.updated_at).toLocaleDateString('es-ES')}
+                                                </p>
+                                            </div>
+                                        </button>
                                     </div>
-                                )}
-                            </div>
-                        ))
+
+                                    {expandedDocId === doc.id && (
+                                        <div className="pl-6 space-y-2 mt-2 border-l-2 border-primary/10">
+                                            {blocks[doc.id]?.map((block) => (
+                                                <Card key={block.id} className="group hover:border-primary/30 transition-all shadow-none bg-muted/30">
+                                                    <CardContent className="p-3 space-y-2">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <h4 className="text-xs font-semibold text-foreground truncate flex-1">{block.title}</h4>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 px-2 text-[10px] bg-primary/10 hover:bg-primary hover:text-primary-foreground"
+                                                                onClick={() => onCompare(block)}
+                                                            >
+                                                                Comparar
+                                                            </Button>
+                                                        </div>
+                                                        <p className="text-[10px] text-muted-foreground line-clamp-3 leading-relaxed">
+                                                            {block.content}
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
+                                            {blocks[doc.id]?.length === 0 && (
+                                                <p className="text-[10px] text-muted-foreground italic p-2">Este documento no tiene bloques</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        }
+                            {/* Analysis Toolbar */}
+                            {selectedDocs.length > 0 && onMultiAnalyze && (
+                                <div className="absolute bottom-4 left-4 right-4 bg-foreground text-background p-2 rounded-xl shadow-2xl flex items-center justify-between gap-2 animate-in slide-in-from-bottom-5">
+                                    <span className="text-xs font-bold px-2">{selectedDocs.length} sel.</span>
+                                    <div className="flex gap-1">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 text-[10px] bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                                            onClick={() => onMultiAnalyze(selectedDocs, 'split')}
+                                        >
+                                            Split
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 text-[10px] bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                                            onClick={() => onMultiAnalyze(selectedDocs, 'diff')}
+                                        >
+                                            Diff
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 text-[10px] bg-white/10 hover:bg-white/20 text-white border border-white/10"
+                                            onClick={() => onMultiAnalyze(selectedDocs, 'matrix')}
+                                        >
+                                            Matrix
+                                        </Button>
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedDocs([])}
+                                        className="w-5 h-5 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-red-500/80 transition-colors"
+                                    >
+                                        <span className="text-xs">×</span>
+                                    </button>
+                                </div>
+                            )}
+                        </>
                     )
                 )}
             </div>
-        </div>
+        </div >
     );
 }

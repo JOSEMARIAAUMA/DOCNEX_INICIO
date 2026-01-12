@@ -4,8 +4,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Library, Search, Plus, BookOpen, Scale, Globe,
-    ChevronRight, ArrowLeft, Info, AlertTriangle, CheckCircle,
-    LayoutGrid, List, MoreVertical, Bookmark, Map as MapIcon,
+    ChevronRight, ChevronLeft, ArrowLeft, Info, AlertTriangle, CheckCircle,
+    LayoutGrid, List, MoreVertical, Bookmark, Map as MapIcon, Filter,
     Database, Zap, FileText, Link as LinkIcon, FileVideo, Presentation, Loader2,
     Shield, ShieldCheck, FileCheck
 } from 'lucide-react';
@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { listGlobalRegulatoryResources, deleteResource, updateResource } from '@/lib/api';
 import LibraryCognitiveGraph from '@/components/visual/LibraryCognitiveGraph';
 import RegisterResourceModal from '@/components/library/RegisterResourceModal';
+import EditResourceModal from '@/components/library/EditResourceModal';
 import RegulatoryCard from '@/components/library/RegulatoryCard';
 import { sentinel, SentinelAlert } from '@/lib/sentinel';
 import { aiService } from '@/lib/ai/service';
@@ -48,6 +49,8 @@ export default function LibraryPage() {
     const [viewMode, setViewMode] = useState<'grid' | 'graph'>('grid');
     const [libMode, setLibMode] = useState<'regulatory' | 'reference'>('regulatory');
     const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+    const [isEditOpen, setIsEditOpen] = useState(false);
+    const [editingResource, setEditingResource] = useState<RegulatoryResource | null>(null);
     const router = useRouter();
 
     // Multi-Select Filters
@@ -61,6 +64,7 @@ export default function LibraryPage() {
     const [alerts, setAlerts] = useState<SentinelAlert[]>([]);
     const [isSentinelChecking, setIsSentinelChecking] = useState(false);
     const [healthStatus, setHealthStatus] = useState<'healthy' | 'warning' | 'critical'>('healthy');
+    const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(false);
 
     const loadData = async () => {
         setLoading(true);
@@ -113,7 +117,7 @@ export default function LibraryPage() {
         }
     };
 
-    const handleAction = async (action: 'delete' | 'archive' | 'external', res: any) => {
+    const handleAction = async (action: 'delete' | 'archive' | 'external' | 'edit', res: any) => {
         try {
             if (action === 'delete') {
                 if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente "${res.title}" del repositorio global?`)) return;
@@ -125,6 +129,9 @@ export default function LibraryPage() {
                 loadData();
             } else if (action === 'external') {
                 if (res.source_uri) window.open(res.source_uri, '_blank');
+            } else if (action === 'edit') {
+                setEditingResource(res);
+                setIsEditOpen(true);
             }
         } catch (err) {
             console.error("Error performing action:", err);
@@ -302,8 +309,18 @@ export default function LibraryPage() {
             </aside>
 
             {/* Secondary Panel: Persistent Filters */}
-            <aside className="w-64 border-r border-border bg-card/5 backdrop-blur-sm flex flex-col p-6 gap-8 shrink-0 overflow-y-auto no-scrollbar">
-                <div className="space-y-8">
+            <motion.aside
+                animate={{ width: isFiltersCollapsed ? 0 : 256, opacity: isFiltersCollapsed ? 0 : 1 }}
+                className="border-r border-border bg-card/5 backdrop-blur-sm flex flex-col shrink-0 overflow-y-auto no-scrollbar relative"
+            >
+                <div className="p-6 space-y-8 min-w-[256px]">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/80 flex items-center gap-2">
+                            <Filter className="w-3 h-3" /> Filtros Maestros
+                        </h3>
+                        <button onClick={() => setIsFiltersCollapsed(true)} className="p-1 hover:bg-muted rounded-md text-muted-foreground"><ChevronRight className="w-3.5 h-3.5" /></button>
+                    </div>
+
                     {/* Jurisdiction Filter */}
                     <div>
                         <h3 className="text-[10px] font-black uppercase tracking-[0.15em] text-primary/60 mb-4 flex items-center gap-2">
@@ -394,12 +411,22 @@ export default function LibraryPage() {
                             setSelectedThemes([]);
                             setSelectedCompliances([]);
                         }}
-                        className="mt-8 w-full py-3 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-primary/10"
+                        className="mx-6 mb-8 py-3 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl transition-all border border-primary/10"
                     >
                         Limpiar Selección
                     </button>
                 )}
-            </aside>
+            </motion.aside>
+
+            {/* Handle for filters expansion */}
+            {isFiltersCollapsed && (
+                <button
+                    onClick={() => setIsFiltersCollapsed(false)}
+                    className="absolute left-[288px] top-1/2 -translate-y-1/2 w-4 h-24 bg-primary/10 hover:bg-primary/20 border-y border-r border-primary/20 rounded-r-lg z-50 flex items-center justify-center transition-all group"
+                >
+                    <ChevronRight className="w-3 h-3 text-primary group-hover:scale-125 transition-transform" />
+                </button>
+            )}
 
             {/* Main Area */}
             <main className="flex-1 flex flex-col min-w-0 bg-slate-50/10 dark:bg-transparent relative">
@@ -521,6 +548,16 @@ export default function LibraryPage() {
                 isOpen={isRegisterOpen}
                 onClose={() => setIsRegisterOpen(false)}
                 onSuccess={loadData}
+            />
+
+            <EditResourceModal
+                isOpen={isEditOpen}
+                onClose={() => {
+                    setIsEditOpen(false);
+                    setEditingResource(null);
+                }}
+                onSuccess={loadData}
+                resource={editingResource}
             />
         </div>
     );

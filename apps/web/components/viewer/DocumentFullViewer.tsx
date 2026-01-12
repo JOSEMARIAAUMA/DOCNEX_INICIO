@@ -18,13 +18,13 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
     const [isLoading, setIsLoading] = useState(true);
 
     // Layer States - Init with Defaults to prevent Hydration Mismatch
-    // We initialize to 'true' (or desired default) and update from localStorage ONLY on client
     const [showMapping, setShowMapping] = useState(true);
     const [showNotes, setShowNotes] = useState(true);
     const [showTags, setShowTags] = useState(false);
     const [showSubBlocks, setShowSubBlocks] = useState(true);
     const [showSupport, setShowSupport] = useState(true);
     const [showVersions, setShowVersions] = useState(false);
+    const [showResearch, setShowResearch] = useState(false);
 
     // Load preferences on mount (Client Only)
     useEffect(() => {
@@ -41,6 +41,7 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
         load('viewer_show_subblocks', setShowSubBlocks);
         load('viewer_show_support', setShowSupport);
         load('viewer_show_versions', setShowVersions);
+        load('viewer_show_research', setShowResearch);
     }, []);
 
     // Navigator State
@@ -48,7 +49,6 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
 
     const handleBlockClick = (blockId: string) => {
         const safeId = String(blockId);
-        // Correctly using global document now (renamed prop avoids shadowing)
         const element = document.getElementById(`block-${safeId}`);
 
         if (element) {
@@ -66,6 +66,7 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
     useEffect(() => { localStorage.setItem('viewer_show_subblocks', JSON.stringify(showSubBlocks)); }, [showSubBlocks]);
     useEffect(() => { localStorage.setItem('viewer_show_support', JSON.stringify(showSupport)); }, [showSupport]);
     useEffect(() => { localStorage.setItem('viewer_show_versions', JSON.stringify(showVersions)); }, [showVersions]);
+    useEffect(() => { localStorage.setItem('viewer_show_research', JSON.stringify(showResearch)); }, [showResearch]);
 
     useEffect(() => {
         loadBlocks();
@@ -263,6 +264,7 @@ export function DocumentFullViewer({ document: docRecord }: DocumentFullViewerPr
                     showSubBlocks={showSubBlocks} setShowSubBlocks={setShowSubBlocks}
                     showSupport={showSupport} setShowSupport={setShowSupport}
                     showVersions={showVersions} setShowVersions={setShowVersions}
+                    showResearch={showResearch} setShowResearch={setShowResearch}
                 />
             </div>
         </div>

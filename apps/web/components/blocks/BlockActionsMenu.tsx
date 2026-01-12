@@ -31,7 +31,10 @@ export default function BlockActionsMenu({ blockId, onAction, onClose }: BlockAc
         { id: 'merge-prev', label: 'Fusionar con anterior', icon: '⬆️' },
         { id: 'merge-next', label: 'Fusionar con siguiente', icon: '⬇️' },
         { id: 'split', label: 'Dividir bloque', icon: '✂️' },
+        { id: 'extract-selection', label: 'Extraer selección a nuevo bloque', icon: '📦' },
         { id: 'divider2', label: '', divider: true },
+        { id: 'add-to-queue', label: 'Añadir a Cola de Fusión', icon: '✨' },
+        { id: 'divider3', label: '', divider: true },
         { id: 'delete', label: 'Eliminar', icon: '🗑️', danger: true }
     ];
 

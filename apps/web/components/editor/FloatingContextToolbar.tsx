@@ -2,14 +2,15 @@
 
 import { Editor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
-import { Sparkles, Zap, Search, FileJson } from 'lucide-react';
+import { Sparkles, Zap, Search, FileJson, PackagePlus } from 'lucide-react';
 import { Button } from '@/components/ui/UiButton';
 
 interface FloatingContextToolbarProps {
     editor: Editor | null;
+    onExtractToBlock?: () => void;
 }
 
-export default function FloatingContextToolbar({ editor }: FloatingContextToolbarProps) {
+export default function FloatingContextToolbar({ editor, onExtractToBlock }: FloatingContextToolbarProps) {
     if (!editor) return null;
 
     const handleAIAction = (type: string) => {
@@ -73,6 +74,22 @@ export default function FloatingContextToolbar({ editor }: FloatingContextToolba
                 <FileJson className="w-3.5 h-3.5" />
                 Extraer Datos
             </Button>
+
+            {onExtractToBlock && (
+                <>
+                    <div className="w-px h-6 bg-border mx-1" />
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={onExtractToBlock}
+                        className="h-8 px-2.5 text-xs gap-1.5 hover:bg-green-500/10 hover:text-green-600 transition-colors font-medium"
+                        title="Crear un nuevo bloque con el texto seleccionado"
+                    >
+                        <PackagePlus className="w-3.5 h-3.5" />
+                        Extraer a Bloque
+                    </Button>
+                </>
+            )}
         </BubbleMenu>
     );
 }

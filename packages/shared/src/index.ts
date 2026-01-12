@@ -21,6 +21,7 @@ export interface Document {
     description?: string | null;
     category?: 'main' | 'version' | 'linked_ref' | 'unlinked_ref';
     status: string;
+    tags?: string[];
     created_at: string;
     updated_at: string;
 }
@@ -53,6 +54,9 @@ export interface Resource {
     extracted_text: string | null;
     tags: string[];
     meta: Record<string, unknown>;
+    status: 'ACTIVE' | 'OBSOLETE' | 'VETOED';
+    theme?: string;
+    processed_pct?: number;
     created_at: string;
     updated_at: string;
 }
