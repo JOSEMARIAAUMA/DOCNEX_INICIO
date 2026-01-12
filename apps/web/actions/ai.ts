@@ -165,6 +165,9 @@ export async function executeNoteInstructionWithAI(
  * Server Action for Cognitive Document Structuring (Librarian Agent) + Relationship Discovery (Relational Agent)
  */
 import { librarianAgent } from '@/lib/ai/agents/librarian-agent';
+import { researcherAgent } from '@/lib/ai/agents/researcher-agent';
+import { briefingAgent } from '@/lib/ai/agents/briefing-agent';
+import { auditorAgent } from '@/lib/ai/agents/auditor-agent';
 import { relationalAgent } from '@/lib/ai/agents/relational-agent';
 import { supabase } from '@/lib/supabase/client';
 
@@ -370,3 +373,200 @@ export async function batchImportBlocks(
         return { success: false, error: e.message };
     }
 }
+
+/**
+ * Server Action to run Research Agent Analysis (Compliance + Analogies)
+ */
+export async function runResearchAnalysis(
+    documentContent: string,
+    projectId: string,
+    context?: AIContext
+): Promise<{ success: boolean; insights?: any[]; error?: string }> {
+    try {
+        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+            return { success: false, error: 'API Key missing' };
+        }
+
+        const insights = await researcherAgent.runAnalysis(documentContent, projectId, context);
+        return { success: true, insights };
+    } catch (e: any) {
+        console.error("[runResearchAnalysis] Error:", e);
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Server Action to generate External Briefings and Visual Annex
+ */
+export async function generateBriefingsAction(
+    projectContext: string,
+    objective: string,
+    targetAudience: string
+): Promise<{
+    success: boolean;
+    briefing?: string;
+    imagePrompts?: string;
+    error?: string;
+}> {
+    try {
+        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+            return { success: false, error: 'API Key missing' };
+        }
+
+        const state = { projectContext, objective, targetAudience };
+        const { briefing } = await briefingAgent.generateExternalBriefing(state);
+        const { imagePrompts } = await briefingAgent.generateVisualAnnex(state);
+
+        return {
+            success: true,
+            briefing,
+            imagePrompts
+        };
+    } catch (e: any) {
+        console.error("[generateBriefingsAction] Error:", e);
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Server Action to run Red Team Audit
+ */
+export async function runDocumentAuditAction(
+    documentContent: string,
+    blocks: any[],
+    objective: string,
+    context?: AIContext
+): Promise<{ success: boolean; findings?: any[]; error?: string }> {
+    try {
+        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+            return { success: false, error: 'API Key missing' };
+        }
+
+        const findings = await auditorAgent.runAudit(documentContent, blocks, objective, context);
+        return { success: true, findings };
+    } catch (e: any) {
+        console.error("[runDocumentAuditAction] Error:", e);
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Server Action for Master Executive Export/Synthesis
+ */
+export async function exportDocumentAction(
+    documentData: any,
+    blocks: any[],
+    researchInsights: any[],
+    auditFindings: any[],
+    briefing?: string,
+    imagePrompts?: string
+): Promise<{ success: boolean; synthesizedContent?: string; error?: string }> {
+    try {
+        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+            return { success: false, error: 'API Key missing' };
+        }
+
+        const model = new ChatGoogleGenerativeAI({
+            model: "gemini-1.5-flash",
+            apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+            temperature: 0.3,
+        });
+
+        const prompt = `Actúa como un Especialista en Comunicación Técnica y Estratégica Senior.
+Tu tarea es realizar la síntesis final de un proyecto complejo para su entrega al cliente.
+
+INFO DEL PROYECTO:
+Título: ${documentData.title}
+Descripción/Objetivo: ${documentData.description}
+
+CONTENIDO BRUTO (BLOQUES):
+${blocks.map(b => `### ${b.title}\n${b.content}`).join('\n\n')}
+
+HALLAZGOS DE INVESTIGACIÓN Y AUDITORÍA:
+Research: ${JSON.stringify(researchInsights)}
+Audit: ${JSON.stringify(auditFindings)}
+
+BRIEFINGS EXTERNOS:
+${briefing || 'N/A'}
+
+TAREA:
+1. Redacta un Resumen Ejecutivo profesional y persuasivo.
+2. Organiza el contenido de los bloques en un flujo narrativo coherente (no solo listarlos).
+3. Integra los hallazgos de auditoría como "Notas de Calidad" o "Verificaciones Técnicas" dentro del texto.
+4. Incluye una sección final "Estrategia de Expansión" basada en los briefings externos.
+
+ESTILO:
+- Profesional, técnico pero legible.
+- Formato Markdown enriquecido.
+- Usa tablas para datos comparativos si es necesario.
+- Tono: Consultoría de alto nivel.
+
+Devuelve únicamente el contenido Markdown del informe final.`;
+
+        const resp = await model.invoke(prompt);
+        return { success: true, synthesizedContent: resp.content.toString() };
+    } catch (e: any) {
+        console.error("[exportDocumentAction] Error:", e);
+        return { success: false, error: e.message };
+    }
+}
+
+/**
+ * Server Action for Smart Scaffolding (Initial Structure)
+ */
+export async function generateScaffoldAction(
+    documentData: { title: string; description: string }
+): Promise<{ success: boolean; structure?: any[]; error?: string }> {
+    try {
+        if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+            return { success: false, error: 'API Key missing' };
+        }
+
+        const model = new ChatGoogleGenerativeAI({
+            model: "gemini-1.5-flash",
+            // For logical structure, we want some temperature but not too much randomness
+            temperature: 0.4,
+        });
+
+        const prompt = `Como Arquitecto Documental experto, diseña la estructura lógica completa para un documento técnico/legal de alto impacto.
+
+PROYECTO:
+Título: ${documentData.title}
+Objetivo: ${documentData.description}
+
+TAREA:
+Genera un esquema jerárquico de 2 a 3 niveles (Títulos, Capítulos, Secciones) que cubra de forma exhaustiva los requisitos del proyecto.
+
+FORMATO DE SALIDA (JSON ESTRICTO):
+Devuelve un array de objetos con esta estructura:
+[
+  {
+    "title": "Título del Bloque",
+    "content": "Párrafo breve explicando qué debe contener este bloque.",
+    "subblocks": [
+      {
+        "title": "Subbloque...",
+        "content": "..."
+      }
+    ]
+  }
+]
+
+IMPORTANTE: No incluyas texto fuera del JSON. Genera entre 5 y 10 bloques principales.`;
+
+        const resp = await model.invoke(prompt);
+        let content = resp.content.toString();
+
+        // Basic JSON cleanup
+        content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        const structure = JSON.parse(content);
+        return { success: true, structure };
+    } catch (e: any) {
+        console.error("[generateScaffoldAction] Error:", e);
+        return { success: false, error: e.message };
+    }
+}
+
+
+

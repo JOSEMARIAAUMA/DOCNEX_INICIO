@@ -1,0 +1,10 @@
+[
+    {
+        "id": "t1",
+        "title": "Verificación de Auditor Red-Team",
+        "description": "Validar que la barra de hallazgos aparece y los indicadores de bloque responden a la severidad.",
+        "status": "pending",
+        "revag": "",
+        "created_at": "2026-01-11T23:45:00Z"
+    }
+]

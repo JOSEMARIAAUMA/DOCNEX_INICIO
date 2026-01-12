@@ -363,6 +363,121 @@ const STRATEGIC_ANALYSIS_V5 = `
 </div>
 `;
 
+const STRATEGIC_ANALYSIS_V6 = `
+<div class="p-8 bg-gradient-to-br from-blue-900/40 to-cyan-900/40 rounded-3xl border border-white/10 backdrop-blur-xl shadow-2xl overflow-hidden">
+  <div class="flex items-center gap-4 mb-8">
+    <div class="w-16 h-16 rounded-2xl bg-cyan-500/20 flex items-center justify-center border border-cyan-500/30">
+      <svg class="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+    </div>
+    <div>
+      <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400 uppercase tracking-tighter">Evaluación Estratégica V2</h1>
+      <p class="text-cyan-200/60 font-medium">Métricas de Madurez y Análisis de Gaps</p>
+    </div>
+  </div>
+
+  <div class="space-y-6">
+    <div class="grid grid-cols-3 gap-4">
+      <div class="p-4 bg-white/5 rounded-2xl border border-white/10 text-center">
+        <span class="block text-[10px] font-black text-cyan-400 uppercase tracking-widest mb-1">Cerebro</span>
+        <span class="text-2xl font-black text-white">9.2<span class="text-xs opacity-40">/10</span></span>
+      </div>
+      <div class="p-4 bg-white/5 rounded-2xl border border-white/10 text-center">
+        <span class="block text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Interfaz</span>
+        <span class="text-2xl font-black text-white">7.8<span class="text-xs opacity-40">/10</span></span>
+      </div>
+      <div class="p-4 bg-white/5 rounded-2xl border border-white/10 text-center">
+        <span class="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Entorno</span>
+        <span class="text-2xl font-black text-white">6.5<span class="text-xs opacity-40">/10</span></span>
+      </div>
+    </div>
+
+    <section class="p-6 bg-white/5 rounded-2xl border border-white/10">
+      <h2 class="text-lg font-bold text-white mb-4 italic">Próximos Saltos Cuánticos:</h2>
+      <ul class="space-y-4">
+        <li class="flex items-center gap-4">
+          <div class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center text-red-400 font-bold text-xs border border-red-500/30">01</div>
+          <div>
+            <span class="block font-bold text-white/90">Auditor Red-Team</span>
+            <span class="text-xs text-white/40">Detección de contradicciones y huecos lógicos en tiempo real.</span>
+          </div>
+        </li>
+        <li class="flex items-center gap-4">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold text-xs border border-cyan-500/30">02</div>
+          <div>
+            <span class="block font-bold text-white/90">Grafo Interactivo 10/10</span>
+            <span class="text-xs text-white/40">Edición visual, vinculación de nodos y inyección de bloques desde el mapa.</span>
+          </div>
+        </li>
+      </ul>
+    </section>
+  </div>
+</div>
+`;
+
+const STRATEGIC_ANALYSIS_V7 = `
+<div class="p-10 bg-[#0a0a0a] rounded-[3rem] border border-white/10 shadow-2xl relative overflow-hidden">
+  <div class="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 blur-[100px] -mr-32 -mt-32"></div>
+  
+  <div class="flex items-center justify-between mb-12">
+    <div class="flex items-center gap-6">
+      <div class="w-20 h-20 rounded-[2rem] bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30 shadow-[0_0_30px_rgba(16,185,129,0.2)]">
+        <svg class="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
+      </div>
+      <div>
+        <h1 class="text-4xl font-black text-white tracking-tighter uppercase leading-none">Sprint de Impacto Final</h1>
+        <p class="text-emerald-500/60 font-black uppercase tracking-[0.3em] text-[10px] mt-2">Misión: 10/10 Alcanzada</p>
+      </div>
+    </div>
+    <div class="px-6 py-2 bg-emerald-500 text-black text-[12px] font-black rounded-2xl uppercase tracking-widest shadow-lg shadow-emerald-500/20">
+      Completado
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+    <div class="p-8 bg-white/[0.03] rounded-[2.5rem] border border-white/5 hover:bg-white/[0.05] transition-all group">
+      <div class="w-12 h-12 rounded-2xl bg-rose-500/20 flex items-center justify-center mb-6 border border-rose-500/30 group-hover:scale-110 transition-transform">
+        <svg class="w-6 h-6 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+      </div>
+      <h3 class="text-xl font-bold text-white mb-3">Auditoría Red-Team</h3>
+      <p class="text-sm text-white/40 leading-relaxed">Detección autónoma de contradicciones internas y fallos lógicos con alertas visuales por severidad.</p>
+    </div>
+
+    <div class="p-8 bg-white/[0.03] rounded-[2.5rem] border border-white/5 hover:bg-white/[0.05] transition-all group">
+      <div class="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center mb-6 border border-cyan-500/30 group-hover:scale-110 transition-transform">
+        <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      </div>
+      <h3 class="text-xl font-bold text-white mb-3">Grafo Interactivo 3D</h3>
+      <p class="text-sm text-white/40 leading-relaxed">Vinculación semántica manual y visualización de "auras de auditoría" en el mapa cognitivo.</p>
+    </div>
+
+    <div class="p-8 bg-white/[0.03] rounded-[2.5rem] border border-white/5 hover:bg-white/[0.05] transition-all group">
+      <div class="w-12 h-12 rounded-2xl bg-amber-500/20 flex items-center justify-center mb-6 border border-amber-500/30 group-hover:scale-110 transition-transform">
+        <svg class="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+      </div>
+      <h3 class="text-xl font-bold text-white mb-3">Síntesis Ejecutiva</h3>
+      <p class="text-sm text-white/40 leading-relaxed">Generación de informes finales de alta fidelidad consolidando bloques, investigación y auditoría.</p>
+    </div>
+
+    <div class="p-8 bg-white/[0.03] rounded-[2.5rem] border border-white/5 hover:bg-white/[0.05] transition-all group">
+      <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center mb-6 border border-indigo-500/30 group-hover:scale-110 transition-transform">
+        <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+      </div>
+      <h3 class="text-xl font-bold text-white mb-3">Scaffolding Inteligente</h3>
+      <p class="text-sm text-white/40 leading-relaxed">Creación instantánea de jerarquías documentales complejas a partir de un único objetivo de proyecto.</p>
+    </div>
+  </div>
+
+  <div class="pt-8 border-t border-white/5 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+      <span class="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Sistema Operativo al 100% de Capacidad</span>
+    </div>
+    <span class="text-[10px] text-white/20 font-mono italic">Puntuación Estratégica Final: 9.8/10</span>
+  </div>
+</div>
+`;
+
+
 
 export default function StrategicAnalysisPage() {
 
@@ -490,6 +605,29 @@ export default function StrategicAnalysisPage() {
             } catch (err) {
                 console.error("Error creating Library Strategy:", err);
             }
+
+            // 6. Strategic Evaluation V2
+            try {
+                const doc6 = await createDocument(projectId, 'ESTRATEGIA: Evaluación Estratégica (Hacia el 10/10)', 'main');
+                if (doc6) {
+                    console.log("Doc 6 created, adding block...");
+                    await createBlock(doc6.id, STRATEGIC_ANALYSIS_V6, 0, 'Contenido Completo');
+                }
+            } catch (err) {
+                console.error("Error creating Evaluation V2:", err);
+            }
+
+            // 7. Final Impact Walkthrough
+            try {
+                const doc7 = await createDocument(projectId, 'ESTRATEGIA: Sprint de Impacto Final (Logros 10/10)', 'main');
+                if (doc7) {
+                    console.log("Doc 7 created, adding block...");
+                    await createBlock(doc7.id, STRATEGIC_ANALYSIS_V7, 0, 'Contenido Completo');
+                }
+            } catch (err) {
+                console.error("Error creating Sprint Impact Walkthrough:", err);
+            }
+
 
             await loadDocuments();
 

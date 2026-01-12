@@ -56,7 +56,7 @@ async function repairHierarchy() {
     for (const block of blocks) {
         const title = block.title.trim();
         let newParentId = null;
-        let newTags = [];
+        let newTags: string[] = [];
 
         // --- LOGIC ---
         // Use STRICT start anchors to avoid confusion between TÍTULO and CAPÍTÍTULO

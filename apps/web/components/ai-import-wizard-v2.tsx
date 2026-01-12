@@ -7,9 +7,12 @@ import { importItems } from '@/actions/documents';
 import { DeepAnalysisResult } from '@/lib/ai/schemas';
 import { ImportItem } from '@/lib/ai/types';
 import * as mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 import {
     LucideFileText, LucideUpload, LucideLoader2, LucideSparkles,
-    LucideSend, LucideX, LucideCheck, LucideInfo, LucideLayers, LucideTag
+    LucideSend, LucideX, LucideCheck, LucideInfo, LucideLayers, LucideTag,
+    LucideBriefcase, LucideHash, LucideClipboard, LucideUser, LucideAlertCircle, LucideGlobe,
+    LucideFileCode, LucideDatabase, LucideTable
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -51,6 +54,22 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
     const [chatInput, setChatInput] = useState('');
     const [isChatting, setIsChatting] = useState(false);
 
+    // Metadata state
+    const [metadata, setMetadata] = useState({
+        projectId: projectId,
+        version: '',
+        isDraft: false,
+        isPartDraft: false,
+        isSource: false,
+        isRegulation: false,
+        isTemplate: false,
+        comments: '',
+        client: '',
+        isMandatory: false,
+    });
+
+    const [isDragging, setIsDragging] = useState(false);
+
 
     const processFile = async (file: File) => {
         setIsProcessingFile(true);
@@ -58,7 +77,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
             const extension = file.name.split('.').pop()?.toLowerCase();
             let extractedText = '';
 
-            if (extension === 'txt') {
+            if (['txt', 'md', 'json', 'xml', 'html', 'js', 'ts', 'py'].includes(extension || '')) {
                 extractedText = await file.text();
             } else if (extension === 'docx') {
                 const arrayBuffer = await file.arrayBuffer();
@@ -90,9 +109,15 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                     fullText += pageText + '\n\n';
                 }
                 extractedText = fullText;
+            } else if (['xlsx', 'xls', 'csv'].includes(extension || '')) {
+                const arrayBuffer = await file.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer);
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                extractedText = XLSX.utils.sheet_to_txt(worksheet);
             } else {
-                alert('Formato no soportado. Usa .docx, .pdf o .txt');
-                return;
+                alert('Intentando leer como texto...');
+                extractedText = await file.text();
             }
 
             if (extractedText) {
@@ -101,7 +126,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
             }
         } catch (error) {
             console.error('Error processing file:', error);
-            alert('Error al procesar el archivo');
+            alert('Error al procesar el archivo. Asegúrate de que sea un formato compatible.');
         } finally {
             setIsProcessingFile(false);
         }
@@ -206,7 +231,7 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
     const handleImport = async () => {
         setIsLoading(true);
         try {
-            const res = await importItems(projectId, documentId, items, 'merge');
+            const res = await importItems(projectId, documentId, items, 'merge', metadata);
             if (res.success) {
                 onSuccess();
                 onClose();
@@ -246,71 +271,191 @@ export function AIImportWizard({ documentId, projectId, onClose, onSuccess }: AI
                     {/* Left: Document Input */}
                     <div className="flex-1 flex flex-col p-6 space-y-4 border-r border-border">
                         {step === 'upload' ? (
-                            <>
-                                <div>
-                                    <label className="text-sm font-semibold text-foreground mb-2 block">
-                                        <LucideFileText className="w-4 h-4 inline mr-2" />
-                                        Documento
-                                    </label>
-                                    <div
-                                        onDragOver={(e) => { e.preventDefault(); }}
-                                        onDrop={async (e) => {
-                                            e.preventDefault();
-                                            const file = e.dataTransfer.files?.[0];
-                                            if (file) await processFile(file);
-                                        }}
-                                        className="h-48 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center hover:border-primary/50 transition-colors cursor-pointer"
-                                        onClick={() => document.getElementById('file-input')?.click()}
-                                    >
-                                        {isProcessingFile ? (
-                                            <div className="text-center space-y-2">
-                                                <LucideLoader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
-                                                <p className="text-sm text-muted-foreground">Procesando...</p>
-                                            </div>
-                                        ) : (
-                                            <div className="text-center space-y-2 p-4">
-                                                <LucideUpload className="w-8 h-8 text-muted-foreground mx-auto" />
-                                                <p className="text-sm font-medium">Arrastra o haz clic para subir</p>
-                                                <p className="text-xs text-muted-foreground">DOCX, PDF, TXT</p>
-                                            </div>
-                                        )}
+                            <div className="flex-1 flex flex-col min-h-0 space-y-6 overflow-y-auto pr-2">
+                                <div className="grid grid-cols-2 gap-6">
+                                    {/* File Input Column */}
+                                    <div className="space-y-4">
+                                        <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                            <LucideUpload className="w-4 h-4 text-primary" />
+                                            Carga de Documento
+                                        </label>
+                                        <div
+                                            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                            onDragLeave={() => setIsDragging(false)}
+                                            onDrop={async (e) => {
+                                                e.preventDefault();
+                                                setIsDragging(false);
+                                                const file = e.dataTransfer.files?.[0];
+                                                if (file) await processFile(file);
+                                            }}
+                                            className={`h-40 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer ${isDragging ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border hover:border-primary/50'}`}
+                                            onClick={() => document.getElementById('file-input')?.click()}
+                                        >
+                                            {isProcessingFile ? (
+                                                <div className="text-center space-y-2">
+                                                    <LucideLoader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+                                                    <p className="text-sm text-muted-foreground">Procesando...</p>
+                                                </div>
+                                            ) : (
+                                                <div className="text-center space-y-2 p-4">
+                                                    <LucideUpload className={`w-10 h-10 mx-auto transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                                                    <p className="text-sm font-medium">Arrastra o haz clic para subir</p>
+                                                    <div className="flex flex-wrap justify-center gap-1 mt-2">
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded border border-border">PDF</span>
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded border border-border">DOCX</span>
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded border border-border">XLSX</span>
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded border border-border">MD</span>
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded border border-border">JSON</span>
+                                                        <span className="text-[10px] px-1.5 py-0.5 bg-muted rounded border border-border">...</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <input
+                                            id="file-input"
+                                            type="file"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) processFile(file);
+                                            }}
+                                        />
+
+                                        <div className="flex-1 flex flex-col min-h-[200px]">
+                                            <label className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                                <LucideFileCode className="w-4 h-4 text-purple-400" />
+                                                Texto Extraído / Manual
+                                            </label>
+                                            <textarea
+                                                className="flex-1 p-4 rounded-xl border border-border bg-background text-foreground font-mono text-xs resize-none focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                                                placeholder="O pega tu texto aquí..."
+                                                value={text}
+                                                onChange={(e) => setText(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
-                                    <input
-                                        id="file-input"
-                                        type="file"
-                                        accept=".docx,.pdf,.txt"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) processFile(file);
-                                        }}
-                                    />
+
+                                    {/* Metadata Column */}
+                                    <div className="space-y-4 bg-muted/20 p-4 rounded-xl border border-border">
+                                        <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                            <LucideInfo className="w-4 h-4 text-blue-400" />
+                                            Datos del Documento (Opcional)
+                                        </label>
+
+                                        <div className="space-y-3">
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-[11px] font-medium text-muted-foreground ml-1 flex items-center gap-1">
+                                                    <LucideBriefcase className="w-3 h-3" /> Proyecto
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-border bg-background"
+                                                    placeholder="ID del Proyecto..."
+                                                    value={metadata.projectId}
+                                                    onChange={(e) => setMetadata({ ...metadata, projectId: e.target.value })}
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label className="text-[11px] font-medium text-muted-foreground ml-1 flex items-center gap-1">
+                                                        <LucideHash className="w-3 h-3" /> Versión
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-border bg-background"
+                                                        placeholder="v1.0..."
+                                                        value={metadata.version}
+                                                        onChange={(e) => setMetadata({ ...metadata, version: e.target.value })}
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label className="text-[11px] font-medium text-muted-foreground ml-1 flex items-center gap-1">
+                                                        <LucideUser className="w-3 h-3" /> Cliente
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-3 py-1.5 text-xs rounded-lg border border-border bg-background"
+                                                        placeholder="Nombre del cliente..."
+                                                        value={metadata.client}
+                                                        onChange={(e) => setMetadata({ ...metadata, client: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2 py-2">
+                                                <button
+                                                    onClick={() => setMetadata({ ...metadata, isDraft: !metadata.isDraft })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${metadata.isDraft ? 'bg-orange-500/20 border-orange-500/50 text-orange-600' : 'bg-background border-border text-muted-foreground'}`}
+                                                >
+                                                    Borrador
+                                                </button>
+                                                <button
+                                                    onClick={() => setMetadata({ ...metadata, isPartDraft: !metadata.isPartDraft })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${metadata.isPartDraft ? 'bg-amber-500/20 border-amber-500/50 text-amber-600' : 'bg-background border-border text-muted-foreground'}`}
+                                                >
+                                                    Fracción
+                                                </button>
+                                                <button
+                                                    onClick={() => setMetadata({ ...metadata, isSource: !metadata.isSource })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${metadata.isSource ? 'bg-blue-500/20 border-blue-500/50 text-blue-600' : 'bg-background border-border text-muted-foreground'}`}
+                                                >
+                                                    Fuente
+                                                </button>
+                                                <button
+                                                    onClick={() => setMetadata({ ...metadata, isRegulation: !metadata.isRegulation })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${metadata.isRegulation ? 'bg-purple-500/20 border-purple-500/50 text-purple-600' : 'bg-background border-border text-muted-foreground'}`}
+                                                >
+                                                    Normativa
+                                                </button>
+                                                <button
+                                                    onClick={() => setMetadata({ ...metadata, isTemplate: !metadata.isTemplate })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${metadata.isTemplate ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-600' : 'bg-background border-border text-muted-foreground'}`}
+                                                >
+                                                    Plantilla
+                                                </button>
+                                                <button
+                                                    onClick={() => setMetadata({ ...metadata, isMandatory: !metadata.isMandatory })}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-medium border transition-colors ${metadata.isMandatory ? 'bg-red-500/20 border-red-500/50 text-red-600' : 'bg-background border-border text-muted-foreground'}`}
+                                                >
+                                                    Obligatorio
+                                                </button>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5">
+                                                <label className="text-[11px] font-medium text-muted-foreground ml-1 flex items-center gap-1">
+                                                    <LucideClipboard className="w-3 h-3" /> Notas / Comentarios
+                                                </label>
+                                                <textarea
+                                                    className="w-full h-20 px-3 py-2 text-xs rounded-lg border border-border bg-background resize-none"
+                                                    placeholder="Añade notas adicionales..."
+                                                    value={metadata.comments}
+                                                    onChange={(e) => setMetadata({ ...metadata, comments: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="flex-1 flex flex-col min-h-0">
-                                    <label className="text-sm font-semibold text-foreground mb-2">Contenido</label>
-                                    <textarea
-                                        className="flex-1 p-4 rounded-lg border border-border bg-background text-foreground font-mono text-sm resize-none focus:ring-2 focus:ring-primary/20 outline-none"
-                                        placeholder="O pega tu texto aquí..."
-                                        value={text}
-                                        onChange={(e) => setText(e.target.value)}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="text-sm font-semibold text-foreground mb-2 block">
+                                <div className="pt-2">
+                                    <label className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                        <LucideSparkles className="w-4 h-4 text-primary" />
                                         Instrucciones para la IA (Opcional)
                                     </label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-4 py-2 rounded-lg border border-border bg-background text-foreground focus:ring-2 focus:ring-primary/20 outline-none"
-                                        placeholder='Ej: "Divide por artículos y extrae solo las cláusulas de rescisión"'
-                                        value={instructions}
-                                        onChange={(e) => setInstructions(e.target.value)}
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            className="w-full pl-4 pr-12 py-3 rounded-xl border border-border bg-background text-sm focus:ring-2 focus:ring-primary/20 outline-none shadow-inner"
+                                            placeholder='Ej: "Divide por artículos y extrae solo las cláusulas de rescisión"'
+                                            value={instructions}
+                                            onChange={(e) => setInstructions(e.target.value)}
+                                        />
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-primary/10 rounded p-1">
+                                            <LucideSparkles className="w-4 h-4 text-primary" />
+                                        </div>
+                                    </div>
                                 </div>
-
-                            </>
+                            </div>
                         ) : null}
 
                         {/* Analysis View */}

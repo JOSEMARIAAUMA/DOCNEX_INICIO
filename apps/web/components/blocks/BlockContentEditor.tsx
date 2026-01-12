@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DocumentBlock, Resource, BlockResourceLink, BlockVersion, SemanticLink, BlockComment } from '@docnex/shared';
 import { updateBlock, updateBlockTitle, listBlockLinks, removeLink, createResourceExtract, createLink, createBlockComment, listBlockComments, listSemanticLinksByBlock } from '@/lib/api';
-import { Network, Tag, Save, ChevronDown, ChevronUp, Split, Image as ImageIcon, Link as LinkIcon, Trash2, Maximize2, Minimize2, Copy, History, PlusSquare, X, BookOpen, Edit3 } from 'lucide-react';
+import { Network, Tag, Save, ChevronDown, ChevronUp, Split, Image as ImageIcon, Link as LinkIcon, Trash2, Maximize2, Minimize2, Copy, History, PlusSquare, X, BookOpen, Edit3, Sparkles, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { SemanticLinkOverlay } from '../viewer/SemanticLinkOverlay';
 import { AIFloatingMenu } from '../editor/AIFloatingMenu';
 import { processAutoLinks } from '@/lib/ai/semantic-engine';
@@ -13,20 +13,26 @@ import NoteDialog from '../notes/NoteDialog';
 import { TagInput } from '../ui/TagInput';
 import { useDebouncedSave } from '@/hooks/use-auto-save';
 import { decodeHtmlEntities } from '@/lib/text-utils';
+import FloatingContextToolbar from '../editor/FloatingContextToolbar';
 
 interface BlockContentEditorProps {
     block: DocumentBlock;
     allBlocks: DocumentBlock[];
     resources: Resource[];
     onUpdate: () => void;
-    onSplit: (splitIndex: number) => void;
+    onSplit: (splitIndex: number, currentHtml: string) => void;
     onCreateBlock?: (content: string, title: string) => void;
+    onExtractSelection?: (remainingContent: string, newBlockContent: string, newBlockTitle: string) => void;
     comparingItem?: { id: string, title: string, content: string, label: string } | null;
     onCloseCompare?: () => void;
     onVersionUpdated?: () => void;
     onNoteCreated?: () => void;
     onOpenSidePanel?: (content: { type: 'block' | 'resource', id: string, title: string, content?: string }) => void;
     refreshTrigger?: number;
+    showResearch?: boolean;
+    researchInsights?: any[];
+    showAudit?: boolean;
+    auditFindings?: any[];
 }
 
 export default function BlockContentEditor({
@@ -36,12 +42,17 @@ export default function BlockContentEditor({
     onUpdate,
     onSplit,
     onCreateBlock,
+    onExtractSelection,
     comparingItem,
     onCloseCompare,
     onVersionUpdated,
     onNoteCreated,
     onOpenSidePanel,
-    refreshTrigger = 0
+    refreshTrigger = 0,
+    showResearch = false,
+    researchInsights = [],
+    showAudit = false,
+    auditFindings = []
 }: BlockContentEditorProps) {
     const [title, setTitle] = useState(decodeHtmlEntities(block.title));
     const [content, setContent] = useState(block.content);
@@ -448,10 +459,34 @@ export default function BlockContentEditor({
         const { from } = editor.state.selection;
         if (from === undefined) return;
 
-        // Since we are using HTML in the editor, we should ideally split at a position that makes sense.
-        // For simplicity, we'll use the character offset in the text, but splitBlock expects a position in the content.
-        // Simplest way is to notify parent with the split index if possible, or just use character offset.
-        onSplit(from);
+        // Pass BOTH the position and the CURRENT HTML content to ensure split matches
+        onSplit(from, editor.getHTML());
+    };
+
+    const handleExtractSelectionAction = () => {
+        const editor = activeEditor || mainEditorRef.current?.getEditor();
+        if (!editor) return;
+
+        const { from, to } = editor.state.selection;
+        if (from === to) {
+            alert('Selecciona texto para extraerlo a un nuevo bloque.');
+            return;
+        }
+
+        const selectedText = editor.state.doc.textBetween(from, to, ' ');
+        const defaultTitle = selectedText.slice(0, 30) + (selectedText.length > 30 ? '...' : '');
+        const title = prompt('Título para el nuevo bloque:', defaultTitle);
+        if (!title) return;
+
+        // Delete selection in editor
+        editor.chain().focus().deleteSelection().run();
+
+        // Get remaining content
+        const remainingContent = editor.getHTML();
+
+        if (onExtractSelection) {
+            onExtractSelection(remainingContent, selectedText, title);
+        }
     };
 
     const handleComment = () => {
@@ -577,6 +612,37 @@ export default function BlockContentEditor({
                     placeholder="Título del bloque..."
                 />
 
+                {/* Research Indicator */}
+                {showResearch && researchInsights.length > 0 && (
+                    <div className="flex -space-x-1.5 overflow-hidden px-2">
+                        {researchInsights.slice(0, 3).map((insight, i) => (
+                            <div
+                                key={i}
+                                className={`w-6 h-6 rounded-full border-2 border-background flex items-center justify-center shadow-sm ${insight.type === 'compliance' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                                    }`}
+                                title={insight.message || insight.suggestion}
+                            >
+                                <Sparkles className="w-3 h-3" />
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {/* Audit Indicator */}
+                {showAudit && auditFindings.length > 0 && auditFindings.some(f => f.affectedBlocks?.includes(block.id)) && (
+                    <div className="flex -space-x-1.5 overflow-hidden px-2">
+                        {auditFindings.filter(f => f.affectedBlocks?.includes(block.id)).slice(0, 3).map((finding, i) => (
+                            <div
+                                key={i}
+                                className={`w-6 h-6 rounded-full border-2 border-background flex items-center justify-center shadow-sm ${finding.severity === 'high' ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'
+                                    }`}
+                                title={`[${finding.type}] ${finding.message}`}
+                            >
+                                <AlertTriangle className="w-3 h-3" />
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {/* Compact Tag Toggle */}
                 <div className="relative">
                     <button
@@ -676,6 +742,9 @@ export default function BlockContentEditor({
 
             {/* AI Floating Menu - Attached to Active Editor */}
             {activeEditor && <AIFloatingMenu editor={activeEditor} blockId={block.id} />}
+
+            {/* Floating Context Toolbar for Text Selection Actions */}
+            {activeEditor && <FloatingContextToolbar editor={activeEditor} onExtractToBlock={handleExtractSelectionAction} />}
 
             {/* 3. MAIN EDITOR AREA SPLIT */}
             {/* 3. MAIN EDITOR AREA SPLIT */}

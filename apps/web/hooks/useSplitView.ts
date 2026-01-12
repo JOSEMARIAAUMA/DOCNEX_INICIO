@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 
-export type SplitViewType = 'block' | 'resource' | 'document' | 'search' | null;
+export type SplitViewType = 'block' | 'resource' | 'document' | 'search' | 'multi-doc' | 'diff' | 'similarity' | null;
 
 interface SplitViewContent {
     type: SplitViewType;
@@ -10,6 +10,7 @@ interface SplitViewContent {
     title?: string;
     content?: string;
     metadata?: any;
+    data?: any;
 }
 
 export function useSplitView() {

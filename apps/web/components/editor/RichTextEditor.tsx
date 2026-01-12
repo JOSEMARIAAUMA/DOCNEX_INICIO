@@ -177,6 +177,9 @@ function EditorToolbar({
                 <DropdownItem onClick={() => editor.chain().focus().unsetHighlight().run()}>
                     <span className="w-4 h-4 rounded bg-transparent border border-border flex items-center justify-center text-[10px] text-muted-foreground">✕</span> Quitar
                 </DropdownItem>
+                <DropdownItem onClick={() => editor.chain().focus().toggleHighlight({ color: '#dcfce7' }).run()}>
+                    <span className="w-4 h-4 rounded bg-green-100 border border-green-300 flex items-center justify-center text-[10px]" title="Fuente Verificada">💎</span> Top Quality
+                </DropdownItem>
             </ToolbarDropdown>
 
             <ToolbarSeparator />

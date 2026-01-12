@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Layers, StickyNote, Tags, Layout, Eye } from 'lucide-react';
+import { Layers, StickyNote, Tags, Layout, Eye, Sparkles, CheckCircle2 } from 'lucide-react';
 
 interface LayerControlPanelProps {
     showMapping: boolean;
@@ -16,6 +16,10 @@ interface LayerControlPanelProps {
     setShowSupport: (v: boolean) => void;
     showVersions: boolean;
     setShowVersions: (v: boolean) => void;
+    showResearch: boolean;
+    setShowResearch: (v: boolean) => void;
+    showAudit: boolean;
+    setShowAudit: (v: boolean) => void;
 }
 
 export function LayerControlPanel({
@@ -24,7 +28,9 @@ export function LayerControlPanel({
     showTags, setShowTags,
     showSubBlocks, setShowSubBlocks,
     showSupport, setShowSupport,
-    showVersions, setShowVersions
+    showVersions, setShowVersions,
+    showResearch, setShowResearch,
+    showAudit, setShowAudit
 }: LayerControlPanelProps) {
     const [isExpanded, setIsExpanded] = React.useState(false);
 
@@ -94,6 +100,22 @@ export function LayerControlPanel({
                         icon={<Layout className="w-4 h-4 rotate-90" />}
                         label="Mostrar Sub-bloques"
                         color="text-purple-500"
+                    />
+
+                    <LayerToggle
+                        active={showResearch}
+                        onClick={() => setShowResearch(!showResearch)}
+                        icon={<Sparkles className="w-4 h-4" />}
+                        label="Inteligencia Investigadora"
+                        color="text-amber-400"
+                    />
+
+                    <LayerToggle
+                        active={showAudit}
+                        onClick={() => setShowAudit(!showAudit)}
+                        icon={<CheckCircle2 className="w-4 h-4" />}
+                        label="Auditoría Red Team"
+                        color="text-emerald-400"
                     />
                 </div>
             </div>

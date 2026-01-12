@@ -22,6 +22,8 @@ interface GraphNode {
     color: string;
     parentId?: string | null;
     description?: string;
+    isAuditAffected?: boolean;
+    auditSeverity?: string;
 }
 
 interface GraphLink {
@@ -37,8 +39,10 @@ interface SemanticGraphProps {
     semanticLinks: any[];
     notes?: any[]; // For future user/ai notes
     onNodeClick: (nodeId: string) => void;
+    onLinkNodes?: (sourceId: string, targetId: string) => Promise<void>;
     width?: number;
     height?: number;
+    auditFindings?: any[];
 }
 
 export default function SemanticGraph({
@@ -47,8 +51,10 @@ export default function SemanticGraph({
     semanticLinks,
     notes = [],
     onNodeClick,
+    onLinkNodes,
     width,
-    height
+    height,
+    auditFindings = []
 }: SemanticGraphProps) {
     const graphRef = useRef<any>(null);
     const [fogNear, setFogNear] = useState(() => {
@@ -110,6 +116,10 @@ export default function SemanticGraph({
         return 1.0;
     });
     const [showControls, setShowControls] = useState(false);
+
+    // Linking Interaction State
+    const [isLinking, setIsLinking] = useState(false);
+    const [sourceNodeId, setSourceNodeId] = useState<string | null>(null);
 
     // Persistence: load effect is now handled by initializers for faster sync
     useEffect(() => {
@@ -204,7 +214,9 @@ export default function SemanticGraph({
                 val: Math.max(0.5, distortedVal),
                 color: nodeColor,
                 parentId: block.parent_block_id,
-                description: block.content ? block.content.substring(0, 100) + '...' : ''
+                description: block.content ? block.content.substring(0, 100) + '...' : '',
+                isAuditAffected: auditFindings.some(f => f.affectedBlocks?.includes(block.id)),
+                auditSeverity: auditFindings.find(f => f.affectedBlocks?.includes(block.id))?.severity
             });
 
             // If it has a parent, create a structural hierarchy link
@@ -269,7 +281,7 @@ export default function SemanticGraph({
         });
 
         return { nodes, links };
-    }, [blocks, resources, semanticLinks, notes, nodeScale, nodeDistortion]);
+    }, [blocks, resources, semanticLinks, notes, nodeScale, nodeDistortion, auditFindings]);
 
     // Auto-fit effect
     useEffect(() => {
@@ -298,6 +310,23 @@ export default function SemanticGraph({
         const sphere = new THREE.Mesh(geometry, material);
         obj.add(sphere);
 
+        // Audit Glow for affected nodes
+        if ((node as any).isAuditAffected) {
+            const glowGeo = new THREE.SphereGeometry(radius * 1.4, 32, 32);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: (node as any).auditSeverity === 'high' ? 0xff0000 : 0xf59e0b,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.BackSide
+            });
+            const glow = new THREE.Mesh(glowGeo, glowMat);
+            obj.add(glow);
+
+            // Add a pulse animation if possible (logic normally goes in a loop, but we can simulate with emissive)
+            material.emissive = new THREE.Color((node as any).auditSeverity === 'high' ? 0xff0000 : 0xf59e0b);
+            material.emissiveIntensity = 0.5;
+        }
+
         // Label - Only for significant nodes
         if (node.type !== 'user-note' && node.type !== 'ai-note') {
             const sprite = new SpriteText(node.name);
@@ -315,7 +344,20 @@ export default function SemanticGraph({
         return obj;
     }, [nodeScale, nodeDistortion, textScale]);
 
-    const handleNodeClick = useCallback((node: any) => {
+    const handleNodeClick = useCallback(async (node: any) => {
+        if (isLinking) {
+            if (!sourceNodeId) {
+                setSourceNodeId(node.id);
+            } else if (sourceNodeId !== node.id) {
+                if (onLinkNodes) {
+                    await onLinkNodes(sourceNodeId, node.id);
+                }
+                setIsLinking(false);
+                setSourceNodeId(null);
+            }
+            return;
+        }
+
         // Aim at node from outside
         const distance = 40;
         const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
@@ -329,7 +371,7 @@ export default function SemanticGraph({
         }
 
         setTimeout(() => onNodeClick(node.id), 500);
-    }, [onNodeClick]);
+    }, [onNodeClick, isLinking, sourceNodeId, onLinkNodes]);
 
     return (
         <div className="w-full h-full rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl" style={{
@@ -435,6 +477,29 @@ export default function SemanticGraph({
                     >
                         <Wand2 className="w-6 h-6 group-hover:rotate-12 transition-transform" />
                     </button>
+
+                    <div className="w-[1px] h-12 bg-white/5" />
+
+                    <button
+                        onClick={() => {
+                            setIsLinking(!isLinking);
+                            setSourceNodeId(null);
+                        }}
+                        className={`ml-2 px-6 py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border flex items-center gap-3 ${isLinking
+                            ? 'bg-[#d4ae7b] text-black border-[#d4ae7b]'
+                            : 'bg-white/5 text-[#d4ae7b]/60 border-white/5 hover:bg-white/10'}`}
+                    >
+                        <div className={`w-2 h-2 rounded-full ${isLinking ? 'bg-black animate-pulse' : 'bg-[#d4ae7b]/20'}`} />
+                        {isLinking ? (sourceNodeId ? 'Destino...' : 'Origen...') : 'Crear Vínculo'}
+                    </button>
+                    {isLinking && (
+                        <button
+                            onClick={() => { setIsLinking(false); setSourceNodeId(null); }}
+                            className="ml-2 p-4 text-white/40 hover:text-rose-500 transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
             </div>
 

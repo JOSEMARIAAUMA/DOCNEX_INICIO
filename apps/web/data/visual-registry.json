@@ -1,0 +1,65 @@
+[
+    {
+        "category": "Inteligencia (Auditor)",
+        "feature": "Barra de Hallazgos Proactiva",
+        "purpose": "Mostrar contradicciones en el Documento actual.",
+        "location": "Editor (DocumentEditorPage Header)",
+        "status": "implemented"
+    },
+    {
+        "category": "Inteligencia (Auditor)",
+        "feature": "Alertas de Bioque",
+        "purpose": "Iconos de severidad (Aviso/Check) en cada bloque.",
+        "location": "BlockContentEditor Sticky Header",
+        "status": "implemented"
+    },
+    {
+        "category": "Visual (Grafo)",
+        "feature": "Vinculación Visual",
+        "purpose": "Crear links semánticos arrastrando entre nodos.",
+        "location": "Modo Grafo (SemanticGraph)",
+        "status": "implemented"
+    },
+    {
+        "category": "Visual (Grafo)",
+        "feature": "Auras de Auditoría",
+        "purpose": "Aura roja/ámbar en nodos con hallazgos activos.",
+        "location": "Modo Grafo (SemanticGraph)",
+        "status": "implemented"
+    },
+    {
+        "category": "Ecosistema (Export)",
+        "feature": "Synthesis Panel",
+        "purpose": "Previsualización y descarga del informe final.",
+        "location": "Header Editor > Botón Finalizar y Exportar",
+        "status": "implemented"
+    },
+    {
+        "category": "Ecosistema (Scaffold)",
+        "feature": "Scaffold Wizard",
+        "purpose": "Generación automática de estructura desde objetivo.",
+        "location": "Header Editor > Botón Auto-Estructura",
+        "status": "implemented"
+    },
+    {
+        "category": "Contenido (Estrategia)",
+        "feature": "Informes Estratégicos",
+        "purpose": "Dashboard con visualizaciones premium (V1 a V7).",
+        "location": "Configuración > Repositorio Estratégico",
+        "status": "implemented"
+    },
+    {
+        "category": "Interfaz (Sidebar)",
+        "feature": "Toggle Manual de Expansión",
+        "purpose": "Eliminar expansión por hover y permitir control manual mediante iconos < / >.",
+        "location": "Sidebar (Botón superior derecho)",
+        "status": "implemented"
+    },
+    {
+        "category": "Interfaz (Autopilot)",
+        "feature": "Misión Autopilot (Modo Autónomo)",
+        "purpose": "Dashboard guiado paso a paso que orquesta a todos los agentes para completar un proyecto.",
+        "location": "Sidebar > Misión Autopilot",
+        "status": "implemented"
+    }
+]

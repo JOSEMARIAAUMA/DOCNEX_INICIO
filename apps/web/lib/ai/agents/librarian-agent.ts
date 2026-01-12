@@ -115,7 +115,11 @@ Responde SOLO con el JSON válido.`;
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (!jsonMatch) throw new Error("No se pudo extraer JSON de la respuesta del bibliotecario");
 
-            const result = JSON.parse(jsonMatch[0]);
+            let jsonString = jsonMatch[0];
+            // Fix trailing commas and other common AI JSON quirks
+            jsonString = jsonString.replace(/,\s*([\}\]])/g, '$1');
+
+            const result = JSON.parse(jsonString);
             console.log(`[Bibliotecario] Propuesta generada (${result.blocks?.length} bloques de nivel 0)`);
             return { proposedBlocks: result.blocks, iterations: (state.iterations || 0) + 1 };
         } catch (e: any) {
@@ -145,7 +149,7 @@ Si crees que hay errores (ej: bloques demasiado grandes o jerarquía rota), desc
         const feedback = response.content.toString();
         console.log(`[Crítico] Feedback: ${feedback.slice(0, 100)}...`);
 
-        if (feedback.includes("APROBADO") || (state.iterations || 0) > 2) {
+        if (feedback.includes("APROBADO") || (state.iterations || 0) >= 3) {
             console.log("[Crítico] ✅ Propuesta aceptada o límite alcanzado.");
             return { error: undefined }; // Success path
         }
@@ -167,7 +171,11 @@ Si crees que hay errores (ej: bloques demasiado grandes o jerarquía rota), desc
 
         // Condición de salida o bucle
         workflow.addConditionalEdges("critique", (state) => {
-            if (!state.proposedBlocks || state.proposedBlocks.length === 0) return "analyze"; // Reintentar con feedback
+            // Si no hay bloques pero tenemos errores previos de parseo o crítica,
+            // y hemos superado el límite de iteraciones, salimos para evitar bucle infinito.
+            if ((state.iterations || 0) >= 3) return END;
+
+            if (!state.proposedBlocks || state.proposedBlocks.length === 0) return "analyze";
             return END;
         });
 
@@ -187,7 +195,9 @@ Si crees que hay errores (ej: bloques demasiado grandes o jerarquía rota), desc
             proposedBlocks: []
         };
 
-        const finalState = await app.invoke(initialState);
+        // Aumentamos el recursionLimit de LangGraph por seguridad, 
+        // aunque la lógica de conditionalEdges ahora es más robusta.
+        const finalState = await app.invoke(initialState, { recursionLimit: 50 });
         return finalState.proposedBlocks;
     }
     /**
